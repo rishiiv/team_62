@@ -18,6 +18,16 @@ menu_items = [
     [13, "Lychee Tea", "Fruit Tea", 5.00, True],
     [14, "Peach Oolong Tea", "Fruit Tea", 5.25, True],
     [15, "Brown Sugar Milk Tea", "Milk Tea", 5.50, True],
+    [16, "Mango Milk Tea", "Milk Tea", 5.50, True],
+    [17, "Strawberry Milk Tea", "Milk Tea", 5.50, True],
+    [18, "Honeydew Milk Tea", "Milk Tea", 5.50, True],
+    [19, "Wintermelon Milk Tea", "Milk Tea", 5.50, True],
+    [20, "Grape Chia", "Milk Tea", 5.50, True],
+    [21, "Passion Fruit", "Milk Tea", 5.50, True],
+    [22, "Oolong Milk Tea", "Milk Tea", 5.50, True],
+    [23, "Honey Lemon Milk Tea", "Milk Tea", 5.50, True],
+    [24, "Peach Milk Tea", "Milk Tea", 5.50, True]
+    
 ]
 
 with open("menu_items.csv", "w", newline="", encoding="utf-8") as f:
