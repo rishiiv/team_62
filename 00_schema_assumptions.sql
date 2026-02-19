@@ -1,6 +1,3 @@
--- OPTIONAL helper schema (edit/ignore if you already have tables)
--- Minimal schema for PostgreSQL/MySQL-style SQL.
-
 CREATE TABLE IF NOT EXISTS menu_items (
   menu_item_id INT PRIMARY KEY,
   name VARCHAR(100) NOT NULL,
