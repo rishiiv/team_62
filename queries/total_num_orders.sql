@@ -1,0 +1,2 @@
+SELECT COUNT(*) AS total_num_orders
+FROM sales_orders;
