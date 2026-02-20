@@ -1,0 +1,1 @@
+SELECT m.name, SUM(soi.quantity) AS total_qty_sold FROM sales_order_items soi JOIN menu_items m ON m.menu_item_id = soi.menu_item_id GROUP BY m.name ORDER BY total_qty_sold DESC LIMIT 10; 

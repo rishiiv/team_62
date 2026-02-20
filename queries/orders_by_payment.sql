@@ -1,0 +1,1 @@
+SELECT payment_method, COUNT(*) AS orders, SUM(total_amount) AS sales FROM sales_orders GROUP BY payment_method ORDER BY sales DESC;

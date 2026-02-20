@@ -1,0 +1,1 @@
+SELECT DATE_TRUNC('month', order_datetime) AS month_start, COUNT(*) AS orders, AVG(total_amount) AS avg_ticket, SUM(total_amount) AS sales FROM sales_orders GROUP BY 1 ORDER BY 1;

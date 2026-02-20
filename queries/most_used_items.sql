@@ -1,0 +1,1 @@
+SELECT ii.inventory_item_id, ii.name, ii.unit, SUM(soi.quantity * mi.qty_per_item) AS total_used FROM sales_order_items soi JOIN menu_item_ingredients mi ON mi.menu_item_id = soi.menu_item_id JOIN inventory_items ii ON ii.inventory_item_id = mi.inventory_item_id GROUP BY ii.inventory_item_id, ii.name, ii.unit ORDER BY total_used DESC LIMIT 25;

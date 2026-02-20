@@ -1,0 +1,1 @@
+SELECT DATE_TRUNC('month', purchase_date) AS month_start, SUM(line_cost) AS total_spent FROM inventory_purchases GROUP BY 1 ORDER BY 1;

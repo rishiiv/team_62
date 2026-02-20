@@ -1,0 +1,1 @@
+SELECT DATE_TRUNC('week', order_datetime) AS week_start, SUM(total_amount) AS week_sales FROM sales_orders GROUP BY 1 ORDER BY 1;

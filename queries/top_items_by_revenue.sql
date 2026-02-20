@@ -1,0 +1,1 @@
+SELECT m.name, SUM(soi.quantity * soi.unit_price) AS revenue FROM sales_order_items soi JOIN menu_items m ON m.menu_item_id = soi.menu_item_id GROUP BY m.name ORDER BY revenue DESC LIMIT 10;

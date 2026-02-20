@@ -1,0 +1,1 @@
+SELECT COUNT(DISTINCT DATE_TRUNC('week', order_datetime)) AS distinct_weeks FROM sales_orders;
