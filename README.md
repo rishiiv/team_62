@@ -30,11 +30,9 @@ team_62/
 │                   │   ├── MainController.java
 │                   │   └── MainWindowController.java
 │                   └── Main.java          # Application entry point
-├── data/                                  # SQL data files
-│   ├── 00_schema_assumptions.sql
-│   ├── 01_inventory_and_recipes.sql
-│   ├── 02_sales_history.sql
-│   └── 03_inventory_purchases_and_usage.sql
+├── data/                                  # schema and seed files
+│   ├── schema.sql
+│   └── seed.py
 ├── build/classes/                         # Compiled classes
 ├── compile.sh                             # Compilation script
 ├── run.sh                                 # Run script
