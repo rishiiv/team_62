@@ -21,6 +21,7 @@ javac --module-path "$JAVAFX_PATH" \
       --add-modules javafx.controls,javafx.fxml \
       -d build/classes \
       src/main/java/com/team62/model/*.java \
+      src/main/java/com/team62/db/*.java \
       src/main/java/com/team62/view/*.java \
       src/main/java/com/team62/controller/*.java \
       src/main/java/com/team62/*.java

@@ -1,10 +1,14 @@
 package com.team62.model;
 
 /**
- * Simple in-memory representation of an employee for manager demos.
+ * Employee model used by the manager UI.
+ *
+ * {@code employeeId} is a simple UI-friendly integer id.
+ * {@code dbId} holds the real UUID primary key from the database.
  */
 public class Employee {
     private int employeeId;
+    private String dbId;
     private String name;
     private String role;
     private boolean active;
@@ -25,6 +29,14 @@ public class Employee {
 
     public void setEmployeeId(int employeeId) {
         this.employeeId = employeeId;
+    }
+    
+    public String getDbId() {
+        return dbId;
+    }
+    
+    public void setDbId(String dbId) {
+        this.dbId = dbId;
     }
 
     public String getName() {
