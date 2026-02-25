@@ -1,1 +1,1 @@
-SELECT COUNT(*) AS total_orders FROM sales_orders;
+SELECT COUNT(*) AS total_num_orders FROM sales_orders; -- how many orders exist
