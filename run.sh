@@ -7,7 +7,11 @@
 
 JAVAFX_PATH=${1:-${JAVA_FX_PATH:-/Users/adavi/development/javafx-sdk-25.0.1/lib}}
 
-# Path to the PostgreSQL JDBC driver JAR. Update this if you put the driver elsewhere.
+# Path to the PostgreSQL JDBC driver JAR. Prefer lib/postgresql-*.jar if present.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -z "${PG_JDBC_JAR}" ] && [ -d "$SCRIPT_DIR/lib" ]; then
+  PG_JDBC_JAR="$(find "$SCRIPT_DIR/lib" -maxdepth 1 -name 'postgresql-*.jar' 2>/dev/null | head -1)"
+fi
 PG_JDBC_JAR=${PG_JDBC_JAR:-/Users/adavi/development/postgresql-42.7.10.jar}
 
 echo "Running JavaFX application..."

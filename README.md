@@ -15,34 +15,21 @@ This project follows the **Model-View-Controller (MVC)** architecture pattern fo
 
 ```
 team_62/
-├── src/
-│   └── main/
-│       └── java/
-│           └── com/
-│               └── team62/
-│                   ├── model/              # Model layer - data entities
-│                   │   ├── MenuItem.java
-│                   │   ├── InventoryItem.java
-│                   │   ├── SalesOrder.java
-│                   │   ├── SalesOrderItem.java
-│                   │   ├── Employee.java
-│                   │   ├── InventoryPurchase.java
-│                   │   └── InventoryUsage.java
-│                   ├── view/               # View layer - UI presentation
-│                   │   ├── MainView.java       # Shell with Cashier/Manager toggle
-│                   │   ├── CashierView.java    # Order entry grid + order summary
-│                   │   └── ManagerView.java    # Menu, Inventory, Employees, Reports
-│                   ├── controller/         # Controller layer - business logic
-│                   │   ├── MainController.java      # All DB-backed CRUD and reports
-│                   │   └── MainWindowController.java
-│                   ├── db/                 # Database connection
-│                   │   └── Database.java       # Postgres JDBC URL, user, password
-│                   └── Main.java          # Application entry point
-├── data/
-│   └── schema.sql
-├── build/classes/                         # Compiled classes
-├── compile.sh                             # Compilation script (includes db package)
-├── run.sh                                 # Run script (requires Postgres JDBC JAR on classpath)
+├── src/main/java/com/team62/              # Source (Maven-style layout)
+│   ├── model/                             # Data entities
+│   ├── view/                              # JavaFX UI (MainView, CashierView, ManagerView)
+│   ├── controller/                        # Business logic + DB access
+│   ├── db/                                # JDBC connection helper
+│   └── Main.java
+├── sql/                                   # Schema and SQL scripts
+│   ├── schema.sql                         # DB schema (Customer, Employee, Item, Order, etc.)
+│   ├── seed.py                            # Optional seed script
+│   └── queries/                          # Analytics / report queries
+├── lib/                                   # Third-party JARs (see lib/README.md)
+│   └── postgresql-42.7.10.jar            # PostgreSQL JDBC driver (add manually)
+├── build/classes/                         # Compiled output
+├── compile.sh                             # Build script
+├── run.sh                                 # Run script (uses lib/postgresql-*.jar if present)
 └── README.md
 ```
 
@@ -119,9 +106,7 @@ The app is **fully backed by the shared PostgreSQL database**. There is no separ
 2. **JavaFX SDK** — Download from [OpenJFX](https://openjfx.io/). The scripts default to `/Users/adavi/development/javafx-sdk-25.0.1/lib`. To use another path:
    - `export JAVA_FX_PATH=/path/to/javafx-sdk/lib`, or
    - `./compile.sh /path/to/javafx-sdk/lib` and `./run.sh /path/to/javafx-sdk/lib`.
-3. **PostgreSQL JDBC driver** — Required at **runtime** so the app can connect to the database. Download the JAR from [jdbc.postgresql.org](https://jdbc.postgresql.org/download/). The run script defaults to `/Users/adavi/development/postgresql-42.7.10.jar`. To use a different path:
-   - `export PG_JDBC_JAR=/path/to/postgresql-XX.x.x.jar`
-   - or edit the `PG_JDBC_JAR` line in `run.sh`.
+3. **PostgreSQL JDBC driver** — Required at **runtime**. Download the JAR from [jdbc.postgresql.org](https://jdbc.postgresql.org/download/) and place it in the project’s **`lib/`** folder (e.g. `lib/postgresql-42.7.10.jar`). The run script automatically uses any `postgresql-*.jar` in `lib/`. To use a JAR elsewhere: `export PG_JDBC_JAR=/path/to/postgresql-XX.x.x.jar`.
 
 ### Quick Start (recommended)
 
