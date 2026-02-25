@@ -1,10 +1,14 @@
 package com.team62.model;
 
 /**
- * Model representing an inventory item
+ * Model representing an inventory item for the manager UI.
+ *
+ * {@code inventoryItemId} is a UI id. {@code dbId} stores the real UUID from
+ * the {@code \"Inventory_Quantity\".inventory_id} column.
  */
 public class InventoryItem {
     private int inventoryItemId;
+    private String dbId;
     private String name;
     private String unit;
     private int currentQuantity;
@@ -32,6 +36,14 @@ public class InventoryItem {
     
     public void setInventoryItemId(int inventoryItemId) {
         this.inventoryItemId = inventoryItemId;
+    }
+    
+    public String getDbId() {
+        return dbId;
+    }
+    
+    public void setDbId(String dbId) {
+        this.dbId = dbId;
     }
     
     public String getName() {

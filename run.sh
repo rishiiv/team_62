@@ -7,6 +7,9 @@
 
 JAVAFX_PATH=${1:-${JAVA_FX_PATH:-/Users/adavi/development/javafx-sdk-25.0.1/lib}}
 
+# Path to the PostgreSQL JDBC driver JAR. Update this if you put the driver elsewhere.
+PG_JDBC_JAR=${PG_JDBC_JAR:-/Users/adavi/development/postgresql-42.7.10.jar}
+
 echo "Running JavaFX application..."
 echo "Using JavaFX path: $JAVAFX_PATH"
 
@@ -20,5 +23,5 @@ fi
 java --module-path "$JAVAFX_PATH" \
      --add-modules javafx.controls,javafx.fxml \
      --enable-native-access=javafx.graphics \
-     -cp build/classes \
+     -cp "build/classes:$PG_JDBC_JAR" \
      com.team62.Main

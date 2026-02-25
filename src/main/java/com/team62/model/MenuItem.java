@@ -3,10 +3,14 @@ package com.team62.model;
 import java.math.BigDecimal;
 
 /**
- * Model representing a menu item
+ * Model representing a menu item.
+ *
+ * {@code menuItemId} is a simple UI-friendly integer id used only inside the JavaFX
+ * application. {@code dbId} holds the real UUID primary key from the database.
  */
 public class MenuItem {
     private int menuItemId;
+    private String dbId; // backing UUID from "Item".item_id (as String)
     private String name;
     private String category;
     private BigDecimal basePrice;
@@ -30,6 +34,14 @@ public class MenuItem {
     
     public void setMenuItemId(int menuItemId) {
         this.menuItemId = menuItemId;
+    }
+    
+    public String getDbId() {
+        return dbId;
+    }
+    
+    public void setDbId(String dbId) {
+        this.dbId = dbId;
     }
     
     public String getName() {

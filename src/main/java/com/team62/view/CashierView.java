@@ -221,6 +221,9 @@ public class CashierView extends BorderPane {
             SalesOrderItem oi = new SalesOrderItem(
                     nextOrderItemId++, orderId, line.menuItem.getMenuItemId(),
                     line.quantity, line.menuItem.getBasePrice());
+            // carry the real DB UUID for this item so the controller
+            // can persist into \"Order\" / \"Order_Item\"
+            oi.setItemDbId(line.menuItem.getDbId());
             order.addOrderItem(oi);
         }
 

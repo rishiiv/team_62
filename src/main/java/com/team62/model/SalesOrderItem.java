@@ -3,12 +3,16 @@ package com.team62.model;
 import java.math.BigDecimal;
 
 /**
- * Model representing a sales order item
+ * Model representing a sales order item.
+ *
+ * {@code menuItemId} is the UI id; {@code itemDbId} stores the real UUID
+ * primary key from the {@code "Item"} table as a String.
  */
 public class SalesOrderItem {
     private long orderItemId;
     private long orderId;
     private int menuItemId;
+    private String itemDbId;
     private int quantity;
     private BigDecimal unitPrice;
     
@@ -46,6 +50,14 @@ public class SalesOrderItem {
     
     public void setMenuItemId(int menuItemId) {
         this.menuItemId = menuItemId;
+    }
+    
+    public String getItemDbId() {
+        return itemDbId;
+    }
+    
+    public void setItemDbId(String itemDbId) {
+        this.itemDbId = itemDbId;
     }
     
     public int getQuantity() {
