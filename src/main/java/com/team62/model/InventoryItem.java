@@ -7,17 +7,19 @@ public class InventoryItem {
     private int inventoryItemId;
     private String name;
     private String unit;
+    private int currentQuantity;
     private int parLevel;
     private int reorderPoint;
     private boolean isActive;
-    
+
     public InventoryItem() {
     }
-    
-    public InventoryItem(int inventoryItemId, String name, String unit, int parLevel, int reorderPoint, boolean isActive) {
+
+    public InventoryItem(int inventoryItemId, String name, String unit, int currentQuantity, int parLevel, int reorderPoint, boolean isActive) {
         this.inventoryItemId = inventoryItemId;
         this.name = name;
         this.unit = unit;
+        this.currentQuantity = currentQuantity;
         this.parLevel = parLevel;
         this.reorderPoint = reorderPoint;
         this.isActive = isActive;
@@ -47,7 +49,15 @@ public class InventoryItem {
     public void setUnit(String unit) {
         this.unit = unit;
     }
-    
+
+    public int getCurrentQuantity() {
+        return currentQuantity;
+    }
+
+    public void setCurrentQuantity(int currentQuantity) {
+        this.currentQuantity = currentQuantity;
+    }
+
     public int getParLevel() {
         return parLevel;
     }

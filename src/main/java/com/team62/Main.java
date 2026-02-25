@@ -22,7 +22,7 @@ public class Main extends Application {
         
         Scene scene = new Scene(view, 800, 600);
         
-        primaryStage.setTitle("Team 62 Application");
+        primaryStage.setTitle("Boba Shop POS");
         primaryStage.setScene(scene);
         primaryStage.setMinWidth(400);
         primaryStage.setMinHeight(300);
