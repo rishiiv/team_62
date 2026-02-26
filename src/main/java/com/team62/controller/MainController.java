@@ -366,8 +366,8 @@ public class MainController {
     public BigDecimal getTotalSalesForDate(LocalDate date) {
         String sql = """
                 SELECT COALESCE(SUM(i.price * (iq.qty::integer)), 0) AS total
-                  FROM "Order" o
-                  JOIN LATERAL jsonb_each_text(o.item_quantity) AS iq(item_id, qty) ON TRUE
+                  FROM "Order_Item" o
+                  JOIN LATERAL jsonb_each_text(o.quantity) AS iq(item_id, qty) ON TRUE
                   JOIN "Item" i ON i.item_id = iq.item_id::uuid
                  WHERE o.date::date = ?
                 """;

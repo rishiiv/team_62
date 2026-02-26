@@ -17,7 +17,10 @@ Thumbs.db
 
 # JavaFX runtime (if included)
 javafx-sdk/
-*.jar 
 
-# Optional: uncomment to avoid committing JDBC driver
-# lib/*.jar
+# .sh files depend on machine
+compile.sh
+run.sh
+
+# avoid committing JDBC driver
+lib/*.jar 
