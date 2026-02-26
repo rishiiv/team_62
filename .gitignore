@@ -19,8 +19,7 @@ Thumbs.db
 javafx-sdk/
 
 # .sh files depend on machine
-compile.sh
-run.sh
+*.sh
 
 # avoid committing JDBC driver
 lib/*.jar 

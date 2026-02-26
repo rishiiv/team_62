@@ -419,12 +419,12 @@ public class MainController {
         }
         
         String insertOrderSql = """
-                INSERT INTO "Order" (order_id, item_quantity, employee_id, customer_id, date)
-                VALUES (?, ?::jsonb, ?, ?, ?)
+                INSERT INTO "Order" (order_id, employee_id, customer_id, date)
+                VALUES (?, ?, ?, ?)
                 """;
         String insertOrderItemSql = """
-                INSERT INTO "Order_Item" (id, order_id, item_id)
-                VALUES (?, ?, ?)
+                INSERT INTO "Order_Item" (id, order_id, item_id, quantity, unit_price)
+                VALUES (?, ?, ?, ?, ?)
                 """;
         
         try (var conn = Database.getConnection()) {
@@ -454,10 +454,9 @@ public class MainController {
             
             try (var ps = conn.prepareStatement(insertOrderSql)) {
                 ps.setObject(1, orderId);
-                ps.setString(2, json.toString());
-                ps.setObject(3, employeeId);
-                ps.setObject(4, customerId);
-                ps.setTimestamp(5, order.getOrderDatetime());
+                ps.setObject(2, employeeId);
+                ps.setObject(3, customerId);
+                ps.setTimestamp(4, order.getOrderDatetime());
                 ps.executeUpdate();
             }
             
@@ -469,6 +468,8 @@ public class MainController {
                     ps.setObject(1, UUID.randomUUID());
                     ps.setObject(2, orderId);
                     ps.setObject(3, UUID.fromString(item.getItemDbId()));
+                    ps.setInt(4, item.getQuantity());
+                    ps.setBigDecimal(5, item.getUnitPrice());
                     ps.addBatch();
                 }
                 ps.executeBatch();
