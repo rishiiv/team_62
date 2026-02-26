@@ -41,21 +41,20 @@ public class CashierView extends BorderPane {
     private final Label taxTipLabel = new Label("Tax/Tip: $0.00");
     private final Label totalLabel = new Label("TOTAL: $0.00");
     private long nextOrderItemId = 1;
+    private final FlowPane menuGrid;
 
     public CashierView(MainController controller) {
         this.controller = controller;
+        this.menuGrid = new FlowPane(12, 12);
         setStyle("-fx-background-color: #f5f0eb;");
         buildLayout();
     }
 
-    private void buildLayout() {
-        setPadding(new Insets(16));
-
-        // Left: menu item grid
-        FlowPane menuGrid = new FlowPane(12, 12);
-        menuGrid.setPrefWrapLength(400);
-        menuGrid.setPadding(new Insets(8));
-
+    /**
+     * Refreshes the menu item grid from the database (e.g. after Manager adds or edits items).
+     */
+    public void refreshMenu() {
+        menuGrid.getChildren().clear();
         for (MenuItem item : controller.getAllMenuItems()) {
             if (!item.isActive()) {
                 continue;
@@ -68,6 +67,14 @@ public class CashierView extends BorderPane {
             btn.setOnAction(e -> addToOrder(item));
             menuGrid.getChildren().add(btn);
         }
+    }
+
+    private void buildLayout() {
+        setPadding(new Insets(16));
+
+        menuGrid.setPrefWrapLength(400);
+        menuGrid.setPadding(new Insets(8));
+        refreshMenu();
 
         ScrollPane menuScroll = new ScrollPane(menuGrid);
         menuScroll.setFitToWidth(true);

@@ -6,24 +6,26 @@ import com.team62.model.InventoryItem;
 import com.team62.model.MenuItem;
 import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.util.Optional;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
+import javafx.scene.control.ButtonType;
+import javafx.scene.control.CheckBox;
 import javafx.scene.control.DatePicker;
 import javafx.scene.control.Label;
 import javafx.scene.control.Separator;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextField;
-import javafx.scene.control.TextInputDialog;
 import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
+import javafx.stage.Modality;
+import javafx.stage.Stage;
 import javafx.scene.text.Font;
 import javafx.scene.text.FontWeight;
 
@@ -102,7 +104,7 @@ public class ManagerView extends BorderPane {
         menuPane.setSpacing(12);
         menuPane.setPadding(new Insets(16));
 
-        Label title = new Label("Menu — View, Add & Update Items & Prices");
+        Label title = new Label("Menu — View, Add & Edit Items & Prices");
         title.setFont(Font.font("Arial", FontWeight.BOLD, 16));
         menuPane.getChildren().add(title);
         menuPane.getChildren().add(new Separator());
@@ -121,6 +123,45 @@ public class ManagerView extends BorderPane {
         table.setPrefHeight(200);
         menuPane.getChildren().add(table);
 
+        HBox tableActions = new HBox(8);
+        tableActions.setAlignment(Pos.CENTER_LEFT);
+        Button editMenuBtn = new Button("Edit selected");
+        editMenuBtn.setOnAction(e -> {
+            MenuItem sel = table.getSelectionModel().getSelectedItem();
+            if (sel == null) {
+                new Alert(Alert.AlertType.WARNING, "Select a row to edit.").showAndWait();
+                return;
+            }
+            if (showEditMenuDialog(sel)) {
+                table.setItems(javafx.collections.FXCollections.observableList(controller.getAllMenuItems()));
+            }
+        });
+        Button deleteMenuBtn = new Button("Delete selected");
+        deleteMenuBtn.setStyle("-fx-text-fill: #c00;");
+        deleteMenuBtn.setOnAction(e -> {
+            MenuItem sel = table.getSelectionModel().getSelectedItem();
+            if (sel == null) {
+                new Alert(Alert.AlertType.WARNING, "Select a row to delete.").showAndWait();
+                return;
+            }
+            Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
+                    "Delete menu item \"" + sel.getName() + "\"? This cannot be undone.",
+                    ButtonType.OK, ButtonType.CANCEL);
+            if (confirm.showAndWait().orElse(ButtonType.CANCEL) == ButtonType.OK) {
+                String err = controller.deleteMenuItem(sel);
+                if (err == null) {
+                    table.setItems(javafx.collections.FXCollections.observableList(controller.getAllMenuItems()));
+                } else {
+                    new Alert(Alert.AlertType.ERROR, err).showAndWait();
+                }
+            }
+        });
+        tableActions.getChildren().addAll(editMenuBtn, deleteMenuBtn);
+        menuPane.getChildren().add(tableActions);
+
+        Label addLabel = new Label("Add new item");
+        addLabel.setFont(Font.font("Arial", FontWeight.BOLD, 12));
+        menuPane.getChildren().add(addLabel);
         HBox form = new HBox(8);
         form.setAlignment(Pos.CENTER_LEFT);
         TextField nameF = new TextField();
@@ -153,35 +194,60 @@ public class ManagerView extends BorderPane {
                 new Alert(Alert.AlertType.ERROR, "Invalid input. Use a number for price.").showAndWait();
             }
         });
-        Button updateBtn = new Button("Update selected");
-        updateBtn.setOnAction(e -> {
-            MenuItem sel = table.getSelectionModel().getSelectedItem();
-            if (sel == null) {
-                return;
-            }
-            try {
-                sel.setName(nameF.getText().trim());
-                sel.setCategory(catF.getText().trim());
-                sel.setBasePrice(new BigDecimal(priceF.getText().trim()));
-                controller.updateMenuItem(sel);
-                table.refresh();
-            } catch (Exception ex) {
-                new Alert(Alert.AlertType.ERROR, "Invalid input.").showAndWait();
-            }
-        });
         form.getChildren().addAll(
                 new Label("Name:"), nameF,
                 new Label("Category:"), catF,
                 new Label("Price:"), priceF,
-                addBtn, updateBtn);
+                addBtn);
         menuPane.getChildren().add(form);
+    }
+
+    private boolean showEditMenuDialog(MenuItem item) {
+        TextField nameF = new TextField(item.getName());
+        nameF.setPrefWidth(200);
+        TextField catF = new TextField(item.getCategory());
+        catF.setPrefWidth(120);
+        TextField priceF = new TextField(item.getBasePrice().toString());
+        priceF.setPrefWidth(80);
+        VBox root = new VBox(10);
+        root.setPadding(new Insets(16));
+        root.getChildren().addAll(
+                new Label("Name:"), nameF,
+                new Label("Category:"), catF,
+                new Label("Price:"), priceF);
+        Button saveBtn = new Button("Save");
+        Button cancelBtn = new Button("Cancel");
+        HBox buttons = new HBox(8);
+        buttons.getChildren().addAll(saveBtn, cancelBtn);
+        root.getChildren().add(buttons);
+
+        Stage stage = new Stage();
+        stage.setTitle("Edit menu item");
+        stage.initModality(Modality.APPLICATION_MODAL);
+        stage.setScene(new javafx.scene.Scene(root));
+        final boolean[] saved = { false };
+        saveBtn.setOnAction(ev -> {
+            try {
+                item.setName(nameF.getText().trim());
+                item.setCategory(catF.getText().trim());
+                item.setBasePrice(new BigDecimal(priceF.getText().trim()));
+                controller.updateMenuItem(item);
+                saved[0] = true;
+                stage.close();
+            } catch (Exception ex) {
+                new Alert(Alert.AlertType.ERROR, "Invalid input. Use a number for price.").showAndWait();
+            }
+        });
+        cancelBtn.setOnAction(ev -> stage.close());
+        stage.showAndWait();
+        return saved[0];
     }
 
     private void buildInventoryPane() {
         inventoryPane.setSpacing(12);
         inventoryPane.setPadding(new Insets(16));
 
-        Label title = new Label("Inventory — View, Add & Update Items & Quantities");
+        Label title = new Label("Inventory — View, Add & Edit Items & Quantities");
         title.setFont(Font.font("Arial", FontWeight.BOLD, 16));
         inventoryPane.getChildren().add(title);
         inventoryPane.getChildren().add(new Separator());
@@ -202,6 +268,45 @@ public class ManagerView extends BorderPane {
         table.setPrefHeight(200);
         inventoryPane.getChildren().add(table);
 
+        HBox tableActions = new HBox(8);
+        tableActions.setAlignment(Pos.CENTER_LEFT);
+        Button editInvBtn = new Button("Edit selected");
+        editInvBtn.setOnAction(e -> {
+            InventoryItem sel = table.getSelectionModel().getSelectedItem();
+            if (sel == null) {
+                new Alert(Alert.AlertType.WARNING, "Select a row to edit.").showAndWait();
+                return;
+            }
+            if (showEditInventoryDialog(sel)) {
+                table.setItems(javafx.collections.FXCollections.observableList(controller.getAllInventoryItems()));
+            }
+        });
+        Button deleteInvBtn = new Button("Delete selected");
+        deleteInvBtn.setStyle("-fx-text-fill: #c00;");
+        deleteInvBtn.setOnAction(e -> {
+            InventoryItem sel = table.getSelectionModel().getSelectedItem();
+            if (sel == null) {
+                new Alert(Alert.AlertType.WARNING, "Select a row to delete.").showAndWait();
+                return;
+            }
+            Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
+                    "Delete inventory entry \"" + sel.getName() + "\"? This cannot be undone.",
+                    ButtonType.OK, ButtonType.CANCEL);
+            if (confirm.showAndWait().orElse(ButtonType.CANCEL) == ButtonType.OK) {
+                String err = controller.deleteInventoryItem(sel);
+                if (err == null) {
+                    table.setItems(javafx.collections.FXCollections.observableList(controller.getAllInventoryItems()));
+                } else {
+                    new Alert(Alert.AlertType.ERROR, err).showAndWait();
+                }
+            }
+        });
+        tableActions.getChildren().addAll(editInvBtn, deleteInvBtn);
+        inventoryPane.getChildren().add(tableActions);
+
+        Label addLabel = new Label("Add new inventory (name must match an existing menu item)");
+        addLabel.setFont(Font.font("Arial", FontWeight.BOLD, 12));
+        inventoryPane.getChildren().add(addLabel);
         HBox form = new HBox(8);
         form.setAlignment(Pos.CENTER_LEFT);
         TextField nameF = new TextField();
@@ -241,36 +346,59 @@ public class ManagerView extends BorderPane {
                 new Alert(Alert.AlertType.ERROR, "Invalid input. Use numbers for qty and par.").showAndWait();
             }
         });
-        Button updateQtyBtn = new Button("Update quantity (selected)");
-        updateQtyBtn.setOnAction(e -> {
-            InventoryItem sel = table.getSelectionModel().getSelectedItem();
-            if (sel == null) {
-                return;
-            }
-            Optional<String> s = new TextInputDialog(String.valueOf(sel.getCurrentQuantity())).showAndWait();
-            s.ifPresent(str -> {
-                try {
-                    sel.setCurrentQuantity(Integer.parseInt(str.trim()));
-                    controller.updateInventoryItem(sel);
-                    table.refresh();
-                } catch (NumberFormatException ignored) {
-                }
-            });
-        });
         form.getChildren().addAll(
                 new Label("Name:"), nameF,
                 new Label("Unit:"), unitF,
                 new Label("Qty:"), qtyF,
                 new Label("Par:"), parF,
-                addBtn, updateQtyBtn);
+                addBtn);
         inventoryPane.getChildren().add(form);
+    }
+
+    private boolean showEditInventoryDialog(InventoryItem item) {
+        Label nameLabel = new Label(item.getName());
+        TextField qtyF = new TextField(String.valueOf(item.getCurrentQuantity()));
+        qtyF.setPrefWidth(80);
+        TextField parF = new TextField(String.valueOf(item.getParLevel()));
+        parF.setPrefWidth(80);
+        VBox root = new VBox(10);
+        root.setPadding(new Insets(16));
+        root.getChildren().addAll(
+                new Label("Item (read-only):"), nameLabel,
+                new Label("Quantity:"), qtyF,
+                new Label("Par level:"), parF);
+        Button saveBtn = new Button("Save");
+        Button cancelBtn = new Button("Cancel");
+        HBox buttons = new HBox(8);
+        buttons.getChildren().addAll(saveBtn, cancelBtn);
+        root.getChildren().add(buttons);
+
+        Stage stage = new Stage();
+        stage.setTitle("Edit inventory");
+        stage.initModality(Modality.APPLICATION_MODAL);
+        stage.setScene(new javafx.scene.Scene(root));
+        final boolean[] saved = { false };
+        saveBtn.setOnAction(ev -> {
+            try {
+                item.setCurrentQuantity(Integer.parseInt(qtyF.getText().trim()));
+                item.setParLevel(Integer.parseInt(parF.getText().trim()));
+                controller.updateInventoryItem(item);
+                saved[0] = true;
+                stage.close();
+            } catch (NumberFormatException ex) {
+                new Alert(Alert.AlertType.ERROR, "Invalid input. Use numbers for quantity and par.").showAndWait();
+            }
+        });
+        cancelBtn.setOnAction(ev -> stage.close());
+        stage.showAndWait();
+        return saved[0];
     }
 
     private void buildEmployeesPane() {
         employeesPane.setSpacing(12);
         employeesPane.setPadding(new Insets(16));
 
-        Label title = new Label("Employees — View, Add, Update & Manage");
+        Label title = new Label("Employees — View, Add & Edit");
         title.setFont(Font.font("Arial", FontWeight.BOLD, 16));
         employeesPane.getChildren().add(title);
         employeesPane.getChildren().add(new Separator());
@@ -289,6 +417,45 @@ public class ManagerView extends BorderPane {
         table.setPrefHeight(200);
         employeesPane.getChildren().add(table);
 
+        HBox tableActions = new HBox(8);
+        tableActions.setAlignment(Pos.CENTER_LEFT);
+        Button editEmpBtn = new Button("Edit selected");
+        editEmpBtn.setOnAction(e -> {
+            Employee sel = table.getSelectionModel().getSelectedItem();
+            if (sel == null) {
+                new Alert(Alert.AlertType.WARNING, "Select a row to edit.").showAndWait();
+                return;
+            }
+            if (showEditEmployeeDialog(sel)) {
+                table.setItems(javafx.collections.FXCollections.observableList(controller.getAllEmployees()));
+            }
+        });
+        Button deleteEmpBtn = new Button("Delete selected");
+        deleteEmpBtn.setStyle("-fx-text-fill: #c00;");
+        deleteEmpBtn.setOnAction(e -> {
+            Employee sel = table.getSelectionModel().getSelectedItem();
+            if (sel == null) {
+                new Alert(Alert.AlertType.WARNING, "Select a row to delete.").showAndWait();
+                return;
+            }
+            Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
+                    "Delete employee \"" + sel.getName() + "\"? This cannot be undone.",
+                    ButtonType.OK, ButtonType.CANCEL);
+            if (confirm.showAndWait().orElse(ButtonType.CANCEL) == ButtonType.OK) {
+                String err = controller.deleteEmployee(sel);
+                if (err == null) {
+                    table.setItems(javafx.collections.FXCollections.observableList(controller.getAllEmployees()));
+                } else {
+                    new Alert(Alert.AlertType.ERROR, err).showAndWait();
+                }
+            }
+        });
+        tableActions.getChildren().addAll(editEmpBtn, deleteEmpBtn);
+        employeesPane.getChildren().add(tableActions);
+
+        Label addLabel = new Label("Add new employee");
+        addLabel.setFont(Font.font("Arial", FontWeight.BOLD, 12));
+        employeesPane.getChildren().add(addLabel);
         HBox form = new HBox(8);
         form.setAlignment(Pos.CENTER_LEFT);
         TextField nameF = new TextField();
@@ -312,32 +479,48 @@ public class ManagerView extends BorderPane {
             nameF.clear();
             roleF.clear();
         });
-        Button updateBtn = new Button("Update selected");
-        updateBtn.setOnAction(e -> {
-            Employee sel = table.getSelectionModel().getSelectedItem();
-            if (sel == null) {
-                return;
-            }
-            sel.setName(nameF.getText().trim());
-            sel.setRole(roleF.getText().trim());
-            controller.updateEmployee(sel);
-            table.refresh();
-        });
-        Button toggleActiveBtn = new Button("Toggle active");
-        toggleActiveBtn.setOnAction(e -> {
-            Employee sel = table.getSelectionModel().getSelectedItem();
-            if (sel == null) {
-                return;
-            }
-            sel.setActive(!sel.isActive());
-            controller.updateEmployee(sel);
-            table.refresh();
-        });
         form.getChildren().addAll(
                 new Label("Name:"), nameF,
                 new Label("Role:"), roleF,
-                addBtn, updateBtn, toggleActiveBtn);
+                addBtn);
         employeesPane.getChildren().add(form);
+    }
+
+    private boolean showEditEmployeeDialog(Employee emp) {
+        TextField nameF = new TextField(emp.getName());
+        nameF.setPrefWidth(200);
+        TextField roleF = new TextField(emp.getRole() != null ? emp.getRole() : "");
+        roleF.setPrefWidth(120);
+        CheckBox activeCheck = new CheckBox("Active");
+        activeCheck.setSelected(emp.isActive());
+        VBox root = new VBox(10);
+        root.setPadding(new Insets(16));
+        root.getChildren().addAll(
+                new Label("Name:"), nameF,
+                new Label("Role:"), roleF,
+                activeCheck);
+        Button saveBtn = new Button("Save");
+        Button cancelBtn = new Button("Cancel");
+        HBox buttons = new HBox(8);
+        buttons.getChildren().addAll(saveBtn, cancelBtn);
+        root.getChildren().add(buttons);
+
+        Stage stage = new Stage();
+        stage.setTitle("Edit employee");
+        stage.initModality(Modality.APPLICATION_MODAL);
+        stage.setScene(new javafx.scene.Scene(root));
+        final boolean[] saved = { false };
+        saveBtn.setOnAction(ev -> {
+            emp.setName(nameF.getText().trim());
+            emp.setRole(roleF.getText().trim());
+            emp.setActive(activeCheck.isSelected());
+            controller.updateEmployee(emp);
+            saved[0] = true;
+            stage.close();
+        });
+        cancelBtn.setOnAction(ev -> stage.close());
+        stage.showAndWait();
+        return saved[0];
     }
 
     private void buildReportsPane() {
