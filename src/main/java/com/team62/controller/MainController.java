@@ -419,8 +419,8 @@ public class MainController {
         }
         
         String insertOrderSql = """
-                INSERT INTO "Order" (order_id, employee_id, customer_id, date)
-                VALUES (?, ?, ?, ?)
+                INSERT INTO "Order" (order_id, employee_id, customer_id, date, total_price)
+                VALUES (?, ?, ?, NOW(), ?)
                 """;
         String insertOrderItemSql = """
                 INSERT INTO "Order_Item" (id, order_id, item_id, quantity, unit_price)
@@ -456,7 +456,7 @@ public class MainController {
                 ps.setObject(1, orderId);
                 ps.setObject(2, employeeId);
                 ps.setObject(3, customerId);
-                ps.setTimestamp(4, order.getOrderDatetime());
+                ps.setObject(4, order.calculateTotal());
                 ps.executeUpdate();
             }
             

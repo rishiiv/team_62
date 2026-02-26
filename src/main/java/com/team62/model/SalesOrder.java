@@ -71,4 +71,10 @@ public class SalesOrder {
     public void addOrderItem(SalesOrderItem item) {
         this.orderItems.add(item);
     }
+
+    public BigDecimal calculateTotal() { // Calculates the total cost of an order
+        return orderItems.stream()
+            .map(SalesOrderItem::getLineTotal)
+            .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
 }
