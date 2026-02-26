@@ -512,7 +512,7 @@ public class MainController {
         }
         return id;
     }
-    
+    //comment
     private UUID ensureDemoCustomer(java.sql.Connection conn) throws SQLException {
         String select = """
                 SELECT customer_id

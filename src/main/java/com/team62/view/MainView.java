@@ -37,7 +37,7 @@ public class MainView extends BorderPane {
         cashierModeButton.setFocusTraversable(false);
         managerModeButton.setFocusTraversable(false);
     }
-    
+    //comment
     private void setupLayout() {
         setStyle("-fx-background-color: #f5f0eb;");
         
