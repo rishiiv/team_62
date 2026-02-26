@@ -31,6 +31,7 @@ public class MainWindowController {
     private void setupEventHandlers() {
         view.getCashierModeButton().setOnAction(e -> {
             view.setContentPane(cashierPane);
+            ((CashierView) cashierPane).refreshMenu();
             setActiveMode(true);
             updateStatus("Cashier — submit orders");
         });

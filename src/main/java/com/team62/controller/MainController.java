@@ -87,7 +87,6 @@ public class MainController {
     
     public void updateMenuItem(MenuItem item) {
         if (item.getDbId() == null) {
-            // If we do not know the DB UUID (e.g., seed-only item), fallback: no-op.
             return;
         }
         String sql = """
@@ -106,6 +105,28 @@ public class MainController {
             ps.executeUpdate();
         } catch (SQLException e) {
             e.printStackTrace();
+        }
+    }
+
+    /**
+     * @return null on success, or an error message if delete failed (e.g. item is referenced by orders).
+     */
+    public String deleteMenuItem(MenuItem item) {
+        if (item.getDbId() == null) {
+            return "No database id.";
+        }
+        String sql = "DELETE FROM \"Item\" WHERE item_id = ?";
+        try (var conn = Database.getConnection();
+             var ps = conn.prepareStatement(sql)) {
+            ps.setObject(1, UUID.fromString(item.getDbId()));
+            ps.executeUpdate();
+            return null;
+        } catch (SQLException e) {
+            if (e.getMessage() != null && e.getMessage().contains("fk_order_item_item")) {
+                return "Cannot delete: this item appears in existing orders.";
+            }
+            e.printStackTrace();
+            return e.getMessage() != null ? e.getMessage() : "Delete failed.";
         }
     }
     
@@ -218,6 +239,25 @@ public class MainController {
             e.printStackTrace();
         }
     }
+
+    /**
+     * @return null on success, or an error message if delete failed.
+     */
+    public String deleteInventoryItem(InventoryItem item) {
+        if (item.getDbId() == null) {
+            return "No database id.";
+        }
+        String sql = "DELETE FROM \"Inventory_Quantity\" WHERE inventory_id = ?";
+        try (var conn = Database.getConnection();
+             var ps = conn.prepareStatement(sql)) {
+            ps.setObject(1, UUID.fromString(item.getDbId()));
+            ps.executeUpdate();
+            return null;
+        } catch (SQLException e) {
+            e.printStackTrace();
+            return e.getMessage() != null ? e.getMessage() : "Delete failed.";
+        }
+    }
     
     // ============================
     // Employees ("Employee" table, role/active stored in work_history JSONB)
@@ -294,6 +334,28 @@ public class MainController {
             ps.executeUpdate();
         } catch (SQLException e) {
             e.printStackTrace();
+        }
+    }
+
+    /**
+     * @return null on success, or an error message if delete failed (e.g. employee is referenced by orders).
+     */
+    public String deleteEmployee(Employee employee) {
+        if (employee.getDbId() == null) {
+            return "No database id.";
+        }
+        String sql = "DELETE FROM \"Employee\" WHERE employee_id = ?";
+        try (var conn = Database.getConnection();
+             var ps = conn.prepareStatement(sql)) {
+            ps.setObject(1, UUID.fromString(employee.getDbId()));
+            ps.executeUpdate();
+            return null;
+        } catch (SQLException e) {
+            if (e.getMessage() != null && e.getMessage().contains("fk_order_employee")) {
+                return "Cannot delete: this employee appears in existing orders.";
+            }
+            e.printStackTrace();
+            return e.getMessage() != null ? e.getMessage() : "Delete failed.";
         }
     }
     
