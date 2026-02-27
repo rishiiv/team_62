@@ -1,1 +1,5 @@
-SELECT DATE_TRUNC('week', order_datetime) AS week_start, SUM(total_amount) AS week_sales FROM sales_orders GROUP BY 1 ORDER BY 1;
+SELECT date_trunc('week', o.date) AS week_start,
+       SUM(o.total_price) AS week_sales
+FROM "Order" o
+GROUP BY 1
+ORDER BY 1;

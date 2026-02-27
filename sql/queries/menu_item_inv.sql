@@ -1,6 +1,6 @@
-SELECT m.menu_item_id, m.name, 
-COUNT(mi.inventory_item_id) 
-AS ingredient_item_count 
-FROM menu_items m JOIN menu_item_ingredients mi ON mi.menu_item_id = m.menu_item_id 
-GROUP BY m.menu_item_id, m.name 
-ORDER BY ingredient_item_count DESC, m.name;
+SELECT i.name AS menu_item,
+       iq.quantity AS inventory_quantity
+FROM "Item" i
+JOIN "Item_Inventory" ii ON ii.item_id = i.item_id
+JOIN "Inventory_Quantity" iq ON iq.inventory_id = ii.inventory_id
+ORDER BY i.name;

@@ -1,30 +1,29 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 """
-seed.py (UML-compatible)
+sql/seed.py
 
-Populates the UML tables shown in your diagram:
+Seeds schema.sql tables:
 
 Core:
 - "Customer"
 - "Employee"
 - "Item"
 - "Order"
-- inventory_quantity
+- "Inventory_Quantity"
 
 Junctions:
 - "Order_Item"
 - "Item_Inventory"
 
-Keeps your requirements:
-- 65 weeks of orders
-- ~ $1.25M total sales (approx, scaled)
+Defaults for team size 6:
+- 65 weeks (ending about today)
+- ~ $1.25M sales
 - 4 peak days
 - 24 menu items
 
-Notes:
-- Quantities per order are stored in "Order".item_quantity (JSONB) as {item_id: qty}
-- "Order_Item" stores the (order_id, item_id) relationship (1 row per distinct item per order)
-- Customer points = floor($ spent), and purchase_history = array of order_ids
+Important:
+- "Order" includes item_quantity JSONB AND total_price
+- "Order_Item" includes quantity and unit_price (matches MainController + reporting)
 """
 
 from __future__ import annotations
@@ -38,9 +37,7 @@ import uuid
 from dataclasses import dataclass
 from typing import Dict, Iterable, List, Tuple
 
-# -------------------------
-# Menu Items (24 provided)
-# -------------------------
+
 MENU_ITEMS = [
     {"menu_item_id": 1, "name": "Classic Milk Tea", "category": "Milk Tea", "base_price": 4.75, "is_active": True},
     {"menu_item_id": 2, "name": "Taro Milk Tea", "category": "Milk Tea", "base_price": 5.25, "is_active": True},
@@ -69,9 +66,6 @@ MENU_ITEMS = [
 ]
 
 
-# -------------------------
-# Helpers
-# -------------------------
 def daterange(start: dt.date, end: dt.date) -> Iterable[dt.date]:
     cur = start
     while cur <= end:
@@ -84,8 +78,7 @@ def clamp(x: float, lo: float, hi: float) -> float:
 
 
 def weighted_choice(rng: random.Random, items: List[Tuple[int, float]]) -> int:
-    """items: [(value, weight), ...]"""
-    total = sum(w for _, w in items)
+    total = sum(w for _, w in items) or 1.0
     pick = rng.random() * total
     acc = 0.0
     for val, w in items:
@@ -96,15 +89,15 @@ def weighted_choice(rng: random.Random, items: List[Tuple[int, float]]) -> int:
 
 
 def make_uuid(rng: random.Random) -> uuid.UUID:
-    """Deterministic-ish UUIDs from rng (for repeatable seeds)."""
-    # 16 random bytes from RNG
     b = bytes(rng.getrandbits(8) for _ in range(16))
     return uuid.UUID(bytes=b, version=4)
 
 
-# -------------------------
-# Config
-# -------------------------
+def default_start_for_weeks(weeks: int) -> dt.date:
+    today = dt.date.today()
+    return today - dt.timedelta(days=weeks * 7 - 1)
+
+
 @dataclass
 class GenConfig:
     start: dt.date
@@ -115,28 +108,23 @@ class GenConfig:
     avg_ticket: float = 10.25
 
     peak_days: int = 4
-    peak_multiplier: float = 4.5  # how much busier peak days are
+    peak_multiplier: float = 4.5
 
     open_hour: int = 11
-    close_hour: int = 21  # last order start is < close_hour
+    close_hour: int = 21
 
     customer_n: int = 2000
     employee_n: int = 20
 
-    # seasonality knobs
-    dow_mult: Tuple[float, ...] = (0.90, 0.95, 1.00, 1.05, 1.15, 1.30, 1.20)  # Mon..Sun
+    dow_mult: Tuple[float, ...] = (0.90, 0.95, 1.00, 1.05, 1.15, 1.30, 1.20)
     month_mult: Tuple[float, ...] = (1.00, 0.98, 1.00, 1.02, 1.04, 1.06, 1.05, 1.05, 1.03, 1.05, 1.15, 1.18)
     daily_noise_sigma: float = 0.12
 
 
-# -------------------------
-# Data generation
-# -------------------------
 def build_menu_indexes():
     menu_by_id = {m["menu_item_id"]: m for m in MENU_ITEMS}
     base_price = {m["menu_item_id"]: float(m["base_price"]) for m in MENU_ITEMS}
 
-    # popularity weights
     weights: Dict[int, float] = {mid: 1.0 for mid in menu_by_id}
     for m in MENU_ITEMS:
         cat = str(m["category"]).lower()
@@ -145,60 +133,44 @@ def build_menu_indexes():
             weights[mid] *= 1.25
         if "fruit" in cat:
             weights[mid] *= 1.10
-        if "brew" in cat or "tea" in cat:
+        if "brew" in cat:
             weights[mid] *= 0.95
     return menu_by_id, base_price, weights
 
 
-def generate_customers(cfg: GenConfig, rng: random.Random) -> List[Tuple[uuid.UUID, str, str, str, int, List[uuid.UUID]]]:
-    customers = []
+def generate_customers(cfg: GenConfig, rng: random.Random):
+    rows = []
     for i in range(1, cfg.customer_n + 1):
         cid = make_uuid(rng)
         name = f"Customer {i}"
         phone = f"({100 + (i % 900):03d}) {100 + ((i * 7) % 900):03d}-{(i * 97) % 10000:04d}"
         email = f"customer{i}@example.com"
-        customers.append((cid, name, phone, email, 0, []))
-    return customers
+        rows.append((cid, name, phone, email, 0, []))
+    return rows
 
 
-def generate_employees(cfg: GenConfig, rng: random.Random) -> List[Tuple[uuid.UUID, str, dt.date, dict]]:
+def generate_employees(cfg: GenConfig, rng: random.Random):
     roles = ["Barista", "Shift Lead", "Manager"]
-    employees = []
+    rows = []
     base = dt.date(2022, 1, 1)
     for i in range(1, cfg.employee_n + 1):
         eid = make_uuid(rng)
         name = f"Employee {i}"
         start_date = base + dt.timedelta(days=(i * 19) % 700)
         work_history = {"role": roles[(i - 1) % len(roles)], "notes": "Seeded employee record"}
-        employees.append((eid, name, start_date, work_history))
-    return employees
+        rows.append((eid, name, start_date, work_history))
+    return rows
 
 
-def generate_items_and_inventory(
-    cfg: GenConfig, rng: random.Random
-) -> Tuple[
-    List[Tuple[uuid.UUID, str, str, float, bool, str, int, float, List[str]]],
-    List[Tuple[uuid.UUID, int, dt.date, dt.date]],
-    List[Tuple[uuid.UUID, uuid.UUID, uuid.UUID]],
-    Dict[int, uuid.UUID],
-    Dict[uuid.UUID, float],
-]:
-    """
-    Returns:
-      items rows,
-      inventory_quantity rows,
-      item_inventory rows,
-      map menu_item_id -> item_id,
-      map item_id -> base_price
-    """
+def generate_items_and_inventory(cfg: GenConfig, rng: random.Random):
     milk_opts = ["Whole", "Oat", "Almond", "None"]
     topping_opts = ["Boba", "Lychee Jelly", "Popping Boba", "Chia", "Aloe"]
 
-    items = []
+    item_rows = []
     inv_rows = []
-    junction = []
+    item_inv_rows = []
     menu_to_item: Dict[int, uuid.UUID] = {}
-    item_price: Dict[uuid.UUID, float] = {}
+    item_base_price: Dict[uuid.UUID, float] = {}
 
     today = cfg.start
 
@@ -212,43 +184,38 @@ def generate_items_and_inventory(
         price = float(m["base_price"])
         is_active = bool(m["is_active"])
 
-        # defaults similar to your older seed.sql approach
         milk = milk_opts[menu_id % len(milk_opts)]
-        ice = (menu_id * 7) % 3  # 0/1/2
-        sugar = (50 + ((menu_id * 13) % 51)) / 100.0  # 0.50..1.00
+        ice = (menu_id * 7) % 3
+        sugar = (50 + ((menu_id * 13) % 51)) / 100.0
         toppings = [topping_opts[menu_id % len(topping_opts)]]
 
-        items.append((item_id, name, category, price, is_active, milk, ice, sugar, toppings))
+        item_rows.append((item_id, name, category, price, is_active, milk, int(ice), float(sugar), toppings))
         menu_to_item[menu_id] = item_id
-        item_price[item_id] = price
+        item_base_price[item_id] = price
 
-        # inventory_quantity: start with a decent baseline, will subtract sold later
         start_qty = 8000 + ((menu_id * 137) % 2500)
         inv_rows.append((inv_id, int(start_qty), today, today))
 
-        # Item_Inventory junction
-        junction.append((make_uuid(rng), inv_id, item_id))
+        item_inv_rows.append((make_uuid(rng), inv_id, item_id))
 
-    return items, inv_rows, junction, menu_to_item, item_price
+    return item_rows, inv_rows, item_inv_rows, menu_to_item, item_base_price
 
 
 def pick_peak_days(cfg: GenConfig, rng: random.Random) -> List[dt.date]:
     end = cfg.start + dt.timedelta(days=cfg.weeks * 7 - 1)
     all_days = list(daterange(cfg.start, end))
 
-    # Evenly spread peaks across the window, with slight jitter
-    peaks: List[dt.date] = []
     if cfg.peak_days <= 0:
-        return peaks
+        return []
 
+    peaks: List[dt.date] = []
     step = len(all_days) / (cfg.peak_days + 1)
     for k in range(1, cfg.peak_days + 1):
         center = int(round(k * step))
         jitter = rng.randint(-5, 5)
-        idx = clamp(center + jitter, 0, len(all_days) - 1)
-        peaks.append(all_days[int(idx)])
+        idx = int(clamp(center + jitter, 0, len(all_days) - 1))
+        peaks.append(all_days[idx])
 
-    # ensure unique
     peaks = sorted(set(peaks))
     while len(peaks) < cfg.peak_days:
         peaks.append(rng.choice(all_days))
@@ -262,55 +229,48 @@ def generate_orders(
     customers: List[uuid.UUID],
     employees: List[uuid.UUID],
     menu_to_item: Dict[int, uuid.UUID],
-    item_price: Dict[uuid.UUID, float],
-) -> Tuple[
-    List[Tuple[uuid.UUID, dict, uuid.UUID, uuid.UUID, dt.datetime]],
-    List[Tuple[uuid.UUID, uuid.UUID, uuid.UUID]],
-    Dict[uuid.UUID, float],
-    Dict[uuid.UUID, List[uuid.UUID]],
-]:
+    item_base_price: Dict[uuid.UUID, float],
+):
     """
     Returns:
-      order_rows: (order_id, item_quantity_json, employee_id, customer_id, timestamp)
-      order_item_rows: (id, order_id, item_id)  [1 row per distinct item in the order]
-      order_totals: order_id -> total spend
-      customer_orders: customer_id -> list of order_ids
+      order_rows: (order_id, item_quantity_json, employee_id, customer_id, timestamp, total_price)
+      order_item_rows: (id, order_id, item_id, quantity, unit_price)
+      order_totals: order_id -> total_price
+      customer_orders: customer_id -> list[order_id]
+      peak_day_list: list[date]
     """
     end = cfg.start + dt.timedelta(days=cfg.weeks * 7 - 1)
     n_days = (end - cfg.start).days + 1
 
-    # approximate number of orders based on avg ticket
     approx_orders_total = int(max(1, round(cfg.target_sales / cfg.avg_ticket)))
     avg_orders_per_day = approx_orders_total / n_days
 
-    peaks = set(pick_peak_days(cfg, rng))
+    peak_days = pick_peak_days(cfg, rng)
+    peak_set = set(peak_days)
 
-    # build popularity list on menu ids
     _, _, pop_weights = build_menu_indexes()
     menu_ids = sorted(menu_to_item.keys())
     choice_list = [(mid, pop_weights[mid]) for mid in menu_ids]
 
-    # day weights with seasonality + noise + peak multiplier
     raw: List[Tuple[dt.date, float]] = []
     for d in daterange(cfg.start, end):
         mult = cfg.dow_mult[d.weekday()] * cfg.month_mult[d.month - 1]
         noise = math.exp(rng.gauss(0, cfg.daily_noise_sigma))
-        if d in peaks:
+        if d in peak_set:
             mult *= cfg.peak_multiplier
         raw.append((d, mult * noise))
 
-    # normalize
     norm = sum(v for _, v in raw) or 1.0
 
     daily_orders: Dict[dt.date, int] = {}
     for d, v in raw:
         expected = avg_orders_per_day * (v / (norm / n_days))
         lam = max(0.1, expected)
-        k = int(max(0, round(rng.gauss(lam, math.sqrt(lam)))))  # Poisson-ish
+        k = int(max(0, round(rng.gauss(lam, math.sqrt(lam)))))
         daily_orders[d] = k
 
-    order_rows: List[Tuple[uuid.UUID, dict, uuid.UUID, uuid.UUID, dt.datetime]] = []
-    order_item_rows: List[Tuple[uuid.UUID, uuid.UUID, uuid.UUID]] = []
+    order_rows = []
+    order_item_rows = []
     order_totals: Dict[uuid.UUID, float] = {}
     customer_orders: Dict[uuid.UUID, List[uuid.UUID]] = {c: [] for c in customers}
 
@@ -321,67 +281,68 @@ def generate_orders(
             hour = rng.randint(cfg.open_hour, cfg.close_hour - 1)
             minute = rng.choice([0, 5, 10, 12, 15, 18, 20, 25, 30, 35, 40, 45, 50, 55])
             second = rng.choice([0, 0, 0, 30])
-            order_dt = dt.datetime(d.year, d.month, d.day, hour, minute, second)
+            # Use timezone-aware timestamp (UTC)
+            order_dt = dt.datetime(d.year, d.month, d.day, hour, minute, second, tzinfo=dt.timezone.utc)
 
             customer_id = rng.choice(customers)
             employee_id = rng.choice(employees)
 
-            # number of distinct line items
             n_items = weighted_choice(rng, [(1, 0.55), (2, 0.33), (3, 0.12)])
-            item_qty: Dict[str, int] = {}  # JSON wants string keys in many clients
-            distinct_item_ids: List[uuid.UUID] = []
-            total = 0.0
+
+            # Build per-item line items: item_id -> (qty, unit_price)
+            line_items: Dict[uuid.UUID, Tuple[int, float]] = {}
+            item_qty_json: Dict[str, int] = {}
 
             for _i in range(n_items):
                 mid = weighted_choice(rng, choice_list)
                 item_id = menu_to_item[mid]
                 qty = weighted_choice(rng, [(1, 0.78), (2, 0.20), (3, 0.02)])
 
-                # small promo variance
-                price = float(item_price[item_id])
-                price = round(price + rng.choice([0.00, 0.00, 0.25, 0.50, -0.25]), 2)
-                price = max(2.50, price)
+                unit_price = float(item_base_price[item_id])
+                unit_price = round(unit_price + rng.choice([0.00, 0.00, 0.25, 0.50, -0.25]), 2)
+                unit_price = max(2.50, unit_price)
 
-                # accumulate qty per item_id
-                key = str(item_id)
-                item_qty[key] = item_qty.get(key, 0) + qty
-                if item_id not in distinct_item_ids:
-                    distinct_item_ids.append(item_id)
+                prev_qty, prev_price = line_items.get(item_id, (0, unit_price))
+                # keep first chosen unit_price for that item in this order
+                line_items[item_id] = (prev_qty + qty, prev_price)
 
-                total += price * qty
+            total = 0.0
+            for item_id, (qty, unit_price) in line_items.items():
+                total += float(unit_price) * int(qty)
+                item_qty_json[str(item_id)] = int(qty)
+                order_item_rows.append((make_uuid(rng), order_id, item_id, int(qty), float(unit_price)))
 
             total = round(total, 2)
             order_totals[order_id] = total
             customer_orders[customer_id].append(order_id)
 
-            order_rows.append((order_id, item_qty, employee_id, customer_id, order_dt))
+            order_rows.append((order_id, item_qty_json, employee_id, customer_id, order_dt, total))
 
-            # one row per distinct item in the order (qty is in Order.item_quantity JSONB)
-            for item_id in distinct_item_ids:
-                order_item_rows.append((make_uuid(rng), order_id, item_id))
-
-    # scale totals to target (within +/-25% so it stays realistic)
+    # Scale totals to target_sales (bounded)
     current_total = sum(order_totals.values()) or 1.0
-    factor = cfg.target_sales / current_total
-    factor = clamp(factor, 0.75, 1.25)
+    factor = clamp(cfg.target_sales / current_total, 0.75, 1.25)
 
     if abs(1.0 - factor) > 0.02:
-        # Instead of rewriting all item prices, we adjust *points/total* by scaling when computing points.
-        # But your schema doesn't store order totals anyway.
-        # We'll scale "order_totals" so points & reporting match target.
-        for oid in list(order_totals.keys()):
-            order_totals[oid] = round(order_totals[oid] * factor, 2)
+        # Scale both Order.total_price AND Order_Item.unit_price consistently
+        new_order_rows = []
+        new_order_item_rows = []
+        # build order_id -> scaled factor (single global factor)
+        for (oid, item_qty, eid, cid, ts, total) in order_rows:
+            new_total = round(float(total) * factor, 2)
+            order_totals[oid] = new_total
+            new_order_rows.append((oid, item_qty, eid, cid, ts, new_total))
+        for (rid, oid, item_id, qty, unit_price) in order_item_rows:
+            new_price = round(float(unit_price) * factor, 2)
+            new_order_item_rows.append((rid, oid, item_id, int(qty), new_price))
+        order_rows = new_order_rows
+        order_item_rows = new_order_item_rows
 
-    return order_rows, order_item_rows, order_totals, customer_orders
+    return order_rows, order_item_rows, order_totals, customer_orders, peak_days
 
 
-def compute_customer_points_and_history(
-    customers: List[uuid.UUID],
-    customer_orders: Dict[uuid.UUID, List[uuid.UUID]],
-    order_totals: Dict[uuid.UUID, float],
-) -> List[Tuple[uuid.UUID, int, List[uuid.UUID]]]:
+def compute_customer_points_and_history(customer_ids, customer_orders, order_totals):
     updates = []
-    for cid in customers:
+    for cid in customer_ids:
         oids = customer_orders.get(cid, [])
         spend = sum(order_totals.get(oid, 0.0) for oid in oids)
         pts = int(math.floor(spend))
@@ -389,73 +350,52 @@ def compute_customer_points_and_history(
     return updates
 
 
-def compute_inventory_after_sales(
-    inv_map_item_to_inventory: Dict[uuid.UUID, uuid.UUID],
-    order_rows: List[Tuple[uuid.UUID, dict, uuid.UUID, uuid.UUID, dt.datetime]],
-    initial_inventory: Dict[uuid.UUID, int],
-) -> Dict[uuid.UUID, int]:
-    """
-    Very simple model: subtract "drink count" from each item's inventory bucket.
-    (Since your UML inventory is per-item, not ingredient-level.)
-    """
+def compute_inventory_after_sales(inv_map_item_to_inventory, order_item_rows, initial_inventory):
     remaining = dict(initial_inventory)
-    for (_oid, item_qty, _eid, _cid, _ts) in order_rows:
-        for item_id_str, qty in item_qty.items():
-            item_id = uuid.UUID(item_id_str)
-            inv_id = inv_map_item_to_inventory[item_id]
-            remaining[inv_id] = max(0, remaining.get(inv_id, 0) - int(qty))
+    for (_rid, _oid, item_id, qty, _unit_price) in order_item_rows:
+        inv_id = inv_map_item_to_inventory[item_id]
+        remaining[inv_id] = max(0, remaining.get(inv_id, 0) - int(qty))
     return remaining
 
 
-# -------------------------
-# DB execution
-# -------------------------
 def execute_seed(cfg: GenConfig, dsn: str, truncate_first: bool = False) -> None:
     try:
         import psycopg2
         from psycopg2.extras import execute_values, Json, register_uuid
     except ImportError as e:
-        raise SystemExit("psycopg2 is required. Install with: pip install psycopg2-binary") from e
+        raise SystemExit("psycopg2 is required. Install with: py -m pip install --user psycopg2-binary") from e
 
     rng = random.Random(cfg.seed)
 
-    # Generate entities
     customers_full = generate_customers(cfg, rng)
     employees_full = generate_employees(cfg, rng)
-
-    items_full, inv_full, item_inv_full, menu_to_item, item_price = generate_items_and_inventory(cfg, rng)
+    items_full, inv_full, item_inv_full, menu_to_item, item_base_price = generate_items_and_inventory(cfg, rng)
 
     customer_ids = [c[0] for c in customers_full]
     employee_ids = [e[0] for e in employees_full]
 
-    # orders + order_items
-    order_rows, order_item_rows, order_totals, customer_orders = generate_orders(
-        cfg, rng, customer_ids, employee_ids, menu_to_item, item_price
+    order_rows, order_item_rows, order_totals, customer_orders, peak_days = generate_orders(
+        cfg, rng, customer_ids, employee_ids, menu_to_item, item_base_price
     )
 
-    # update customer points + purchase history
     cust_updates = compute_customer_points_and_history(customer_ids, customer_orders, order_totals)
 
-    # inventory recompute (per-item)
-    # Build item->inventory from Item_Inventory rows
     inv_map_item_to_inventory = {item_id: inv_id for (_jid, inv_id, item_id) in item_inv_full}
     initial_inventory = {inv_id: qty for (inv_id, qty, _lr, _lq) in inv_full}
-    remaining_inventory = compute_inventory_after_sales(inv_map_item_to_inventory, order_rows, initial_inventory)
+    remaining_inventory = compute_inventory_after_sales(inv_map_item_to_inventory, order_item_rows, initial_inventory)
 
-    # Prepare DB writes
     with psycopg2.connect(dsn) as conn:
         register_uuid(conn_or_curs=conn)
         conn.autocommit = False
         with conn.cursor() as cur:
             if truncate_first:
-                # Order matters; CASCADE makes it robust.
                 cur.execute(
                     """
                     TRUNCATE TABLE
                       "Order_Item",
                       "Item_Inventory",
                       "Order",
-                      inventory_quantity,
+                      "Inventory_Quantity",
                       "Item",
                       "Employee",
                       "Customer"
@@ -463,18 +403,17 @@ def execute_seed(cfg: GenConfig, dsn: str, truncate_first: bool = False) -> None
                     """
                 )
 
-            # Customers
             execute_values(
                 cur,
                 """
                 INSERT INTO "Customer"(customer_id, name, phone_number, email, points, purchase_history)
                 VALUES %s
                 """,
-                [(cid, name, phone, email, pts, oids) for (cid, name, phone, email, pts, oids) in customers_full],
+                customers_full,
                 page_size=1000,
             )
 
-            # Employees
+            # psycopg2 Json for work_history
             execute_values(
                 cur,
                 """
@@ -485,32 +424,26 @@ def execute_seed(cfg: GenConfig, dsn: str, truncate_first: bool = False) -> None
                 page_size=1000,
             )
 
-            # Items
             execute_values(
                 cur,
                 """
                 INSERT INTO "Item"(item_id, name, category, price, is_active, milk, ice, sugar, toppings)
                 VALUES %s
                 """,
-                [
-                    (iid, name, cat, float(price), bool(active), milk, int(ice), float(sugar), toppings)
-                    for (iid, name, cat, price, active, milk, ice, sugar, toppings) in items_full
-                ],
+                items_full,
                 page_size=500,
             )
 
-            # inventory_quantity
             execute_values(
                 cur,
                 """
-                INSERT INTO inventory_quantity(inventory_id, quantity, last_restocked, last_quantity)
+                INSERT INTO "Inventory_Quantity"(inventory_id, quantity, last_restocked, last_quantity)
                 VALUES %s
                 """,
-                [(inv_id, int(qty), lr, lq) for (inv_id, qty, lr, lq) in inv_full],
+                inv_full,
                 page_size=500,
             )
 
-            # Item_Inventory
             execute_values(
                 cur,
                 """
@@ -521,33 +454,30 @@ def execute_seed(cfg: GenConfig, dsn: str, truncate_first: bool = False) -> None
                 page_size=500,
             )
 
-            # Orders
             execute_values(
                 cur,
                 """
-                INSERT INTO "Order"(order_id, item_quantity, employee_id, customer_id, date)
+                INSERT INTO "Order"(order_id, item_quantity, employee_id, customer_id, date, total_price)
                 VALUES %s
                 """,
-                [(oid, Json(item_qty), eid, cid, ts) for (oid, item_qty, eid, cid, ts) in order_rows],
+                [(oid, Json(item_qty), eid, cid, ts, float(total)) for (oid, item_qty, eid, cid, ts, total) in order_rows],
                 page_size=2000,
             )
 
-            # Order_Item
             execute_values(
                 cur,
                 """
-                INSERT INTO "Order_Item"(id, order_id, item_id)
+                INSERT INTO "Order_Item"(id, order_id, item_id, quantity, unit_price)
                 VALUES %s
                 """,
                 order_item_rows,
                 page_size=5000,
             )
 
-            # Update inventory quantities after sales
             execute_values(
                 cur,
                 """
-                UPDATE inventory_quantity AS iq
+                UPDATE "Inventory_Quantity" AS iq
                 SET quantity = v.quantity
                 FROM (VALUES %s) AS v(inventory_id, quantity)
                 WHERE iq.inventory_id = v.inventory_id
@@ -556,7 +486,6 @@ def execute_seed(cfg: GenConfig, dsn: str, truncate_first: bool = False) -> None
                 page_size=1000,
             )
 
-            # Update customer points + purchase_history
             execute_values(
                 cur,
                 """
@@ -566,66 +495,70 @@ def execute_seed(cfg: GenConfig, dsn: str, truncate_first: bool = False) -> None
                 FROM (VALUES %s) AS v(customer_id, points, purchase_history)
                 WHERE c.customer_id = v.customer_id
                 """,
-                [(cid, pts, oids) for (cid, pts, oids) in cust_updates],
+                cust_updates,
                 page_size=1000,
             )
 
         conn.commit()
 
+    end = cfg.start + dt.timedelta(days=cfg.weeks * 7 - 1)
     total_sales = sum(order_totals.values())
     print(
         "Seed complete.\n"
-        f"  Customers: {len(customers_full)}\n"
-        f"  Employees: {len(employees_full)}\n"
-        f"  Items:     {len(items_full)}\n"
-        f"  Orders:    {len(order_rows)}\n"
-        f"  Peak days: {cfg.peak_days}\n"
-        f"  Sales ≈    ${total_sales:,.2f}\n"
+        f"  Range:    {cfg.start} .. {end}  ({cfg.weeks} weeks)\n"
+        f"  Customers:{len(customers_full)}\n"
+        f"  Employees:{len(employees_full)}\n"
+        f"  Items:    {len(items_full)}\n"
+        f"  Orders:   {len(order_rows)}\n"
+        f"  Order_Item rows: {len(order_item_rows)}\n"
+        f"  Peak days:{cfg.peak_days}  ({', '.join(str(d) for d in peak_days)})\n"
+        f"  Sales ≈   ${total_sales:,.2f}\n"
     )
 
 
-# -------------------------
-# CLI
-# -------------------------
 def parse_args():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--start", default="2024-01-01", help="Start date (YYYY-MM-DD)")
-    ap.add_argument("--weeks", type=int, default=65, help="Number of weeks to generate")
-    ap.add_argument("--seed", type=int, default=42, help="Random seed")
-    ap.add_argument("--target-sales", type=float, default=1_250_000.0, help="Approx total sales for whole range")
-    ap.add_argument("--avg-ticket", type=float, default=10.25, help="Average ticket size (used to estimate order counts)")
-    ap.add_argument("--peak-days", type=int, default=4, help="Number of peak days")
-    ap.add_argument("--execute", action="store_true", help="Execute inserts into Postgres using --dsn")
-    ap.add_argument("--dsn", default=os.environ.get("PG_DSN", ""), help="psycopg2 DSN string (or set PG_DSN env var)")
-    ap.add_argument("--truncate-first", action="store_true", help="TRUNCATE tables before inserting (destructive)")
+    ap.add_argument("--start", default=None, help="Start date (YYYY-MM-DD). Default: auto so end is today.")
+    ap.add_argument("--weeks", type=int, default=65, help="Weeks to generate (team size 6: 65).")
+    ap.add_argument("--seed", type=int, default=42, help="Random seed.")
+    ap.add_argument("--target-sales", type=float, default=1_250_000.0, help="Approx total sales for whole range.")
+    ap.add_argument("--avg-ticket", type=float, default=10.25, help="Average ticket size.")
+    ap.add_argument("--peak-days", type=int, default=4, help="Number of peak days (team size 6: 4).")
+    ap.add_argument("--execute", action="store_true", help="Execute inserts into Postgres using --dsn.")
+    ap.add_argument("--dsn", default=os.environ.get("PG_DSN", ""), help="psycopg2 DSN string (or set PG_DSN env var).")
+    ap.add_argument("--truncate-first", action="store_true", help="TRUNCATE tables before inserting (destructive).")
     return ap.parse_args()
 
 
 def main():
     args = parse_args()
-    start = dt.date.fromisoformat(args.start)
+    weeks = int(args.weeks)
+
+    if args.start:
+        start = dt.date.fromisoformat(args.start)
+    else:
+        start = default_start_for_weeks(weeks)
+
     cfg = GenConfig(
         start=start,
-        weeks=args.weeks,
-        seed=args.seed,
-        target_sales=args.target_sales,
-        avg_ticket=args.avg_ticket,
-        peak_days=args.peak_days,
+        weeks=weeks,
+        seed=int(args.seed),
+        target_sales=float(args.target_sales),
+        avg_ticket=float(args.avg_ticket),
+        peak_days=int(args.peak_days),
     )
 
     if not args.execute:
-        # Dry run stats
         rng = random.Random(cfg.seed)
         customers = generate_customers(cfg, rng)
         employees = generate_employees(cfg, rng)
-        items, inv, item_inv, menu_to_item, item_price = generate_items_and_inventory(cfg, rng)
-        order_rows, order_item_rows, order_totals, _customer_orders = generate_orders(
-            cfg,
-            rng,
+        items, inv, item_inv, menu_to_item, item_base_price = generate_items_and_inventory(cfg, rng)
+        order_rows, order_item_rows, order_totals, _customer_orders, peak_days = generate_orders(
+            cfg, rng,
             [c[0] for c in customers],
             [e[0] for e in employees],
             menu_to_item,
-            item_price,
+            item_base_price
         )
         total_sales = sum(order_totals.values())
         end = cfg.start + dt.timedelta(days=cfg.weeks * 7 - 1)
@@ -637,15 +570,16 @@ def main():
             f"  Items: {len(items)}\n"
             f"  Orders: {len(order_rows)}\n"
             f"  Order_Item rows: {len(order_item_rows)}\n"
+            f"  Peak days: {cfg.peak_days}  ({', '.join(str(d) for d in peak_days)})\n"
             f"  Sales ≈ ${total_sales:,.2f}\n"
         )
         print("\nRun with --execute --dsn '...' to insert into Postgres.")
         return
 
     if not args.dsn:
-        raise SystemExit("--execute requires --dsn (or PG_DSN env var)")
+        raise SystemExit("--execute requires --dsn (or set PG_DSN env var)")
 
-    execute_seed(cfg, args.dsn, truncate_first=args.truncate_first)
+    execute_seed(cfg, args.dsn, truncate_first=bool(args.truncate_first))
 
 
 if __name__ == "__main__":
