@@ -108,7 +108,7 @@ The app is **fully backed by the shared PostgreSQL database**. There is no separ
    - `./compile.sh /path/to/javafx-sdk/lib` and `./run.sh /path/to/javafx-sdk/lib`.
 3. **PostgreSQL JDBC driver** — Required at **runtime**. Download the JAR from [jdbc.postgresql.org](https://jdbc.postgresql.org/download/) and place it in the project’s **`lib/`** folder (e.g. `lib/postgresql-42.7.10.jar`). The run script automatically uses any `postgresql-*.jar` in `lib/`. To use a JAR elsewhere: `export PG_JDBC_JAR=/path/to/postgresql-XX.x.x.jar`.
 
-### Quick Start (recommended)
+### Quick Start (recommended) — Chmod is only linux. You should compile through wsl or git bash if you are on windows.
 
 ```bash
 chmod +x compile.sh run.sh
