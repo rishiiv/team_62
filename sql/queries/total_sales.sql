@@ -1,1 +1,2 @@
-SELECT SUM(total_amount) AS total_sales FROM sales_orders;
+SELECT SUM(total_price) AS total_sales
+FROM "Order";

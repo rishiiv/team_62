@@ -1,1 +1,14 @@
-WITH item_sales AS ( SELECT m.category, m.name, SUM(soi.quantity) AS qty_sold FROM sales_order_items soi JOIN menu_items m ON m.menu_item_id = soi.menu_item_id GROUP BY m.category, m.name ), ranked AS ( SELECT category, name, qty_sold, ROW_NUMBER() OVER (PARTITION BY category ORDER BY qty_sold DESC) AS rn FROM item_sales ) SELECT category, name AS top_item, qty_sold FROM ranked WHERE rn = 1 ORDER BY category;
+WITH item_sales AS (
+  SELECT i.category, i.name, SUM(oi.quantity) AS qty_sold
+  FROM "Order_Item" oi
+  JOIN "Item" i ON i.item_id = oi.item_id
+  GROUP BY i.category, i.name
+),
+ranked AS (
+  SELECT *, ROW_NUMBER() OVER (PARTITION BY category ORDER BY qty_sold DESC, name ASC) AS rn
+  FROM item_sales
+)
+SELECT category, name AS top_item, qty_sold
+FROM ranked
+WHERE rn = 1
+ORDER BY category;
