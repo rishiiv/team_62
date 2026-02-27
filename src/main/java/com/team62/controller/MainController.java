@@ -456,7 +456,7 @@ public class MainController {
                 ps.setObject(1, orderId);
                 ps.setObject(2, employeeId);
                 ps.setObject(3, customerId);
-                ps.setObject(4, order.calculateTotal());
+                ps.setBigDecimal(4, order.getTotalAmount());
                 ps.executeUpdate();
             }
             
