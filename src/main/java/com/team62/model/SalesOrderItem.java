@@ -47,7 +47,7 @@ public class SalesOrderItem {
     public int getMenuItemId() {
         return menuItemId;
     }
-    
+    //comment 
     public void setMenuItemId(int menuItemId) {
         this.menuItemId = menuItemId;
     }

@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Compiled class files
 *.class
 build/
@@ -23,3 +24,27 @@ javafx-sdk/
 
 # avoid committing JDBC driver
 lib/*.jar 
+=======
+# Compiled class files
+*.class
+build/
+out/
+
+# IDE files
+.idea/
+*.iml
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# JavaFX runtime (if included)
+javafx-sdk/
+
+# Optional: uncomment to avoid committing JDBC driver
+# lib/*.jar
+>>>>>>> f0c0d0c (refactor the directory pages)
