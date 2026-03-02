@@ -15,14 +15,18 @@ public class Database {
     // Connection details for the team_62_db instance
     private static final String URL =
             "jdbc:postgresql://csce-315-db.engr.tamu.edu:5432/team_62_db";
-    private static final String USER = "team_62";
-    private static final String PASSWORD = "abgmrr";
+    private static final String USER;
+    private static final String PASSWORD;
 
     static {
         try {
+            Properties props = new Properties();
+            props.load(new FileInputStream("db.properties")); 
+            USER = props.getProperty("db.user"); 
+            PASSWORD = props.getProperty("db.password"); 
             Class.forName("org.postgresql.Driver");
         } catch (ClassNotFoundException e) {
-            throw new RuntimeException("PostgreSQL JDBC driver not found on classpath", e);
+            throw new RuntimeException("Failed to load database config: PostgreSQL JDBC driver not found on classpath or improper password", e);
         }
     }
 
