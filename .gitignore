@@ -20,3 +20,6 @@ javafx-sdk/
 
 # Avoid committing JDBC driver
 lib/*.jar
+
+# properties folder with login info
+#.properties
