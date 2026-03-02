@@ -3,6 +3,9 @@ package com.team62.db;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
+import java.util.Properties;
+import java.io.FileInputStream;
+import java.io.IOException;
 
 /**
  * Simple helper for obtaining JDBC connections to the shared Postgres database.
@@ -25,8 +28,8 @@ public class Database {
             USER = props.getProperty("db.user"); 
             PASSWORD = props.getProperty("db.password"); 
             Class.forName("org.postgresql.Driver");
-        } catch (ClassNotFoundException e) {
-            throw new RuntimeException("Failed to load database config: PostgreSQL JDBC driver not found on classpath or improper password", e);
+        } catch (ClassNotFoundException | IOException e) {
+            throw new RuntimeException("Failed to load database config", e);
         }
     }
 
@@ -37,4 +40,3 @@ public class Database {
         return DriverManager.getConnection(URL, USER, PASSWORD);
     }
 }
-

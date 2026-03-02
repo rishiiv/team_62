@@ -22,4 +22,4 @@ javafx-sdk/
 lib/*.jar
 
 # properties folder with login info
-#.properties
+db.properties
