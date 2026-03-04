@@ -17,6 +17,7 @@ import javafx.scene.control.Label;
 import javafx.scene.control.Separator;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
+import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
 import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.layout.BorderPane;
@@ -24,10 +25,10 @@ import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
-import javafx.stage.Modality;
-import javafx.stage.Stage;
 import javafx.scene.text.Font;
 import javafx.scene.text.FontWeight;
+import javafx.stage.Modality;
+import javafx.stage.Stage;
 
 /**
  * Manager view: sidebar navigation and content panes for Menu, Inventory,
@@ -51,7 +52,6 @@ public class ManagerView extends BorderPane {
     private void buildLayout() {
         setPadding(new Insets(12));
 
-        // Left sidebar
         VBox sidebar = new VBox(8);
         sidebar.setPadding(new Insets(12));
         sidebar.setStyle("-fx-background-color: #d0ccc8; -fx-background-radius: 6;");
@@ -106,8 +106,7 @@ public class ManagerView extends BorderPane {
 
         Label title = new Label("Menu — View, Add & Edit Items & Prices");
         title.setFont(Font.font("Arial", FontWeight.BOLD, 16));
-        menuPane.getChildren().add(title);
-        menuPane.getChildren().add(new Separator());
+        menuPane.getChildren().addAll(title, new Separator());
 
         TableView<MenuItem> table = new TableView<>();
         TableColumn<MenuItem, Integer> idCol = new TableColumn<>("ID");
@@ -120,11 +119,12 @@ public class ManagerView extends BorderPane {
         priceCol.setCellValueFactory(new PropertyValueFactory<>("basePrice"));
         table.getColumns().addAll(idCol, nameCol, catCol, priceCol);
         table.setItems(javafx.collections.FXCollections.observableList(controller.getAllMenuItems()));
-        table.setPrefHeight(200);
+        table.setPrefHeight(220);
         menuPane.getChildren().add(table);
 
+        Runnable refreshMenu = () -> table.setItems(javafx.collections.FXCollections.observableList(controller.getAllMenuItems()));
+
         HBox tableActions = new HBox(8);
-        tableActions.setAlignment(Pos.CENTER_LEFT);
         Button editMenuBtn = new Button("Edit selected");
         editMenuBtn.setOnAction(e -> {
             MenuItem sel = table.getSelectionModel().getSelectedItem();
@@ -133,7 +133,7 @@ public class ManagerView extends BorderPane {
                 return;
             }
             if (showEditMenuDialog(sel)) {
-                table.setItems(javafx.collections.FXCollections.observableList(controller.getAllMenuItems()));
+                refreshMenu.run();
             }
         });
         Button deleteMenuBtn = new Button("Delete selected");
@@ -150,7 +150,7 @@ public class ManagerView extends BorderPane {
             if (confirm.showAndWait().orElse(ButtonType.CANCEL) == ButtonType.OK) {
                 String err = controller.deleteMenuItem(sel);
                 if (err == null) {
-                    table.setItems(javafx.collections.FXCollections.observableList(controller.getAllMenuItems()));
+                    refreshMenu.run();
                 } else {
                     new Alert(Alert.AlertType.ERROR, err).showAndWait();
                 }
@@ -159,34 +159,22 @@ public class ManagerView extends BorderPane {
         tableActions.getChildren().addAll(editMenuBtn, deleteMenuBtn);
         menuPane.getChildren().add(tableActions);
 
-        Label addLabel = new Label("Add new item");
+        Label addLabel = new Label("Add new standard item");
         addLabel.setFont(Font.font("Arial", FontWeight.BOLD, 12));
-        menuPane.getChildren().add(addLabel);
         HBox form = new HBox(8);
-        form.setAlignment(Pos.CENTER_LEFT);
         TextField nameF = new TextField();
         nameF.setPromptText("Name");
-        nameF.setPrefWidth(140);
         TextField catF = new TextField();
         catF.setPromptText("Category");
-        catF.setPrefWidth(100);
         TextField priceF = new TextField();
         priceF.setPromptText("Price");
-        priceF.setPrefWidth(80);
         Button addBtn = new Button("Add");
         addBtn.setOnAction(e -> {
             try {
-                int nextId = controller.getAllMenuItems().stream()
-                        .mapToInt(MenuItem::getMenuItemId)
-                        .max()
-                        .orElse(0) + 1;
-                MenuItem item = new MenuItem(nextId,
-                        nameF.getText().trim(),
-                        catF.getText().trim(),
-                        new BigDecimal(priceF.getText().trim()),
-                        true);
-                controller.addMenuItem(item);
-                table.setItems(javafx.collections.FXCollections.observableList(controller.getAllMenuItems()));
+                int nextId = controller.getAllMenuItems().stream().mapToInt(MenuItem::getMenuItemId).max().orElse(0) + 1;
+                controller.addMenuItem(new MenuItem(nextId, nameF.getText().trim(), catF.getText().trim(),
+                        new BigDecimal(priceF.getText().trim()), true));
+                refreshMenu.run();
                 nameF.clear();
                 catF.clear();
                 priceF.clear();
@@ -194,32 +182,77 @@ public class ManagerView extends BorderPane {
                 new Alert(Alert.AlertType.ERROR, "Invalid input. Use a number for price.").showAndWait();
             }
         });
-        form.getChildren().addAll(
-                new Label("Name:"), nameF,
-                new Label("Category:"), catF,
-                new Label("Price:"), priceF,
-                addBtn);
-        menuPane.getChildren().add(form);
+        form.getChildren().addAll(new Label("Name:"), nameF, new Label("Category:"), catF,
+                new Label("Price:"), priceF, addBtn);
+        menuPane.getChildren().addAll(addLabel, form);
+
+        Label seasonalLabel = new Label("Add new seasonal menu item + associated inventory items");
+        seasonalLabel.setFont(Font.font("Arial", FontWeight.BOLD, 12));
+        VBox seasonalBox = new VBox(8);
+        seasonalBox.setStyle("-fx-background-color: #f7f4ef; -fx-border-color: #d8d2cb; -fx-padding: 10; -fx-background-radius: 6;");
+        TextField sName = new TextField();
+        sName.setPromptText("Seasonal item name");
+        TextField sCat = new TextField("Seasonal");
+        TextField sPrice = new TextField();
+        sPrice.setPromptText("Price");
+        TextField sIngredients = new TextField();
+        sIngredients.setPromptText("Associated inventory names, comma separated");
+        TextField sUse = new TextField("1");
+        TextField sStart = new TextField("25");
+        TextField sMin = new TextField("8");
+        Button seasonalBtn = new Button("Add Seasonal Item");
+        seasonalBtn.setOnAction(e -> {
+            try {
+                String result = controller.addSeasonalMenuItem(
+                        sName.getText().trim(),
+                        sCat.getText().trim(),
+                        new BigDecimal(sPrice.getText().trim()),
+                        sIngredients.getText().trim(),
+                        Integer.parseInt(sUse.getText().trim()),
+                        Integer.parseInt(sStart.getText().trim()),
+                        Integer.parseInt(sMin.getText().trim()));
+                if (result.toLowerCase().contains("success")) {
+                    refreshMenu.run();
+                    sName.clear();
+                    sPrice.clear();
+                    sIngredients.clear();
+                    new Alert(Alert.AlertType.INFORMATION,
+                            result + " It is now available in the POS and its ingredient inventory records were created/linked.")
+                            .showAndWait();
+                } else {
+                    new Alert(Alert.AlertType.ERROR, result).showAndWait();
+                }
+            } catch (Exception ex) {
+                new Alert(Alert.AlertType.ERROR,
+                        "Invalid seasonal item input. Check price, usage per sale, starting inventory, and minimum inventory.")
+                        .showAndWait();
+            }
+        });
+        HBox seasonalTop = new HBox(8, new Label("Name:"), sName, new Label("Category:"), sCat,
+                new Label("Price:"), sPrice);
+        HBox seasonalBottom = new HBox(8, new Label("Ingredients:"), sIngredients,
+                new Label("Use/sale:"), sUse,
+                new Label("Start qty:"), sStart,
+                new Label("Min qty:"), sMin,
+                seasonalBtn);
+        seasonalBox.getChildren().addAll(
+                new Label("Example: Maple Cold Brew with ingredients 'Cold Brew, Maple Syrup, Cream Top'"),
+                seasonalTop, seasonalBottom);
+        menuPane.getChildren().addAll(seasonalLabel, seasonalBox);
     }
 
     private boolean showEditMenuDialog(MenuItem item) {
         TextField nameF = new TextField(item.getName());
-        nameF.setPrefWidth(200);
         TextField catF = new TextField(item.getCategory());
-        catF.setPrefWidth(120);
         TextField priceF = new TextField(item.getBasePrice().toString());
-        priceF.setPrefWidth(80);
-        VBox root = new VBox(10);
-        root.setPadding(new Insets(16));
-        root.getChildren().addAll(
+        VBox root = new VBox(10,
                 new Label("Name:"), nameF,
                 new Label("Category:"), catF,
                 new Label("Price:"), priceF);
+        root.setPadding(new Insets(16));
         Button saveBtn = new Button("Save");
         Button cancelBtn = new Button("Cancel");
-        HBox buttons = new HBox(8);
-        buttons.getChildren().addAll(saveBtn, cancelBtn);
-        root.getChildren().add(buttons);
+        root.getChildren().add(new HBox(8, saveBtn, cancelBtn));
 
         Stage stage = new Stage();
         stage.setTitle("Edit menu item");
@@ -249,8 +282,7 @@ public class ManagerView extends BorderPane {
 
         Label title = new Label("Inventory — View, Add & Edit Items & Quantities");
         title.setFont(Font.font("Arial", FontWeight.BOLD, 16));
-        inventoryPane.getChildren().add(title);
-        inventoryPane.getChildren().add(new Separator());
+        inventoryPane.getChildren().addAll(title, new Separator());
 
         TableView<InventoryItem> table = new TableView<>();
         TableColumn<InventoryItem, Integer> idCol = new TableColumn<>("ID");
@@ -261,15 +293,16 @@ public class ManagerView extends BorderPane {
         unitCol.setCellValueFactory(new PropertyValueFactory<>("unit"));
         TableColumn<InventoryItem, Integer> qtyCol = new TableColumn<>("Quantity");
         qtyCol.setCellValueFactory(new PropertyValueFactory<>("currentQuantity"));
-        TableColumn<InventoryItem, Integer> parCol = new TableColumn<>("Par");
+        TableColumn<InventoryItem, Integer> parCol = new TableColumn<>("Minimum");
         parCol.setCellValueFactory(new PropertyValueFactory<>("parLevel"));
         table.getColumns().addAll(idCol, nameCol, unitCol, qtyCol, parCol);
         table.setItems(javafx.collections.FXCollections.observableList(controller.getAllInventoryItems()));
-        table.setPrefHeight(200);
+        table.setPrefHeight(240);
         inventoryPane.getChildren().add(table);
 
+        Runnable refreshInventory = () -> table.setItems(javafx.collections.FXCollections.observableList(controller.getAllInventoryItems()));
+
         HBox tableActions = new HBox(8);
-        tableActions.setAlignment(Pos.CENTER_LEFT);
         Button editInvBtn = new Button("Edit selected");
         editInvBtn.setOnAction(e -> {
             InventoryItem sel = table.getSelectionModel().getSelectedItem();
@@ -278,7 +311,7 @@ public class ManagerView extends BorderPane {
                 return;
             }
             if (showEditInventoryDialog(sel)) {
-                table.setItems(javafx.collections.FXCollections.observableList(controller.getAllInventoryItems()));
+                refreshInventory.run();
             }
         });
         Button deleteInvBtn = new Button("Delete selected");
@@ -295,7 +328,7 @@ public class ManagerView extends BorderPane {
             if (confirm.showAndWait().orElse(ButtonType.CANCEL) == ButtonType.OK) {
                 String err = controller.deleteInventoryItem(sel);
                 if (err == null) {
-                    table.setItems(javafx.collections.FXCollections.observableList(controller.getAllInventoryItems()));
+                    refreshInventory.run();
                 } else {
                     new Alert(Alert.AlertType.ERROR, err).showAndWait();
                 }
@@ -304,74 +337,51 @@ public class ManagerView extends BorderPane {
         tableActions.getChildren().addAll(editInvBtn, deleteInvBtn);
         inventoryPane.getChildren().add(tableActions);
 
-        Label addLabel = new Label("Add new inventory (name must match an existing menu item)");
+        Label addLabel = new Label("Add new inventory item");
         addLabel.setFont(Font.font("Arial", FontWeight.BOLD, 12));
-        inventoryPane.getChildren().add(addLabel);
         HBox form = new HBox(8);
-        form.setAlignment(Pos.CENTER_LEFT);
         TextField nameF = new TextField();
         nameF.setPromptText("Name");
-        nameF.setPrefWidth(120);
         TextField unitF = new TextField();
         unitF.setPromptText("Unit");
-        unitF.setPrefWidth(60);
         TextField qtyF = new TextField();
         qtyF.setPromptText("Qty");
-        qtyF.setPrefWidth(50);
         TextField parF = new TextField();
-        parF.setPromptText("Par");
-        parF.setPrefWidth(50);
+        parF.setPromptText("Minimum");
         Button addBtn = new Button("Add");
         addBtn.setOnAction(e -> {
             try {
-                int nextId = controller.getAllInventoryItems().stream()
-                        .mapToInt(InventoryItem::getInventoryItemId)
-                        .max()
-                        .orElse(0) + 1;
-                InventoryItem item = new InventoryItem(
-                        nextId,
-                        nameF.getText().trim(),
-                        unitF.getText().trim(),
-                        Integer.parseInt(qtyF.getText().trim()),
-                        Integer.parseInt(parF.getText().trim()),
-                        1,
-                        true);
-                controller.addInventoryItem(item);
-                table.setItems(javafx.collections.FXCollections.observableList(controller.getAllInventoryItems()));
+                int nextId = controller.getAllInventoryItems().stream().mapToInt(InventoryItem::getInventoryItemId).max().orElse(0) + 1;
+                controller.addInventoryItem(new InventoryItem(nextId, nameF.getText().trim(), unitF.getText().trim(),
+                        Integer.parseInt(qtyF.getText().trim()), Integer.parseInt(parF.getText().trim()), 1, true));
+                refreshInventory.run();
                 nameF.clear();
                 unitF.clear();
                 qtyF.clear();
                 parF.clear();
             } catch (Exception ex) {
-                new Alert(Alert.AlertType.ERROR, "Invalid input. Use numbers for qty and par.").showAndWait();
+                new Alert(Alert.AlertType.ERROR, "Invalid input. Use numbers for qty and minimum.").showAndWait();
             }
         });
-        form.getChildren().addAll(
-                new Label("Name:"), nameF,
-                new Label("Unit:"), unitF,
-                new Label("Qty:"), qtyF,
-                new Label("Par:"), parF,
-                addBtn);
-        inventoryPane.getChildren().add(form);
+        form.getChildren().addAll(new Label("Name:"), nameF, new Label("Unit:"), unitF,
+                new Label("Qty:"), qtyF, new Label("Minimum:"), parF, addBtn);
+        inventoryPane.getChildren().addAll(addLabel, form);
     }
 
     private boolean showEditInventoryDialog(InventoryItem item) {
         Label nameLabel = new Label(item.getName());
+        TextField unitF = new TextField(item.getUnit());
         TextField qtyF = new TextField(String.valueOf(item.getCurrentQuantity()));
-        qtyF.setPrefWidth(80);
         TextField parF = new TextField(String.valueOf(item.getParLevel()));
-        parF.setPrefWidth(80);
-        VBox root = new VBox(10);
-        root.setPadding(new Insets(16));
-        root.getChildren().addAll(
+        VBox root = new VBox(10,
                 new Label("Item (read-only):"), nameLabel,
+                new Label("Unit:"), unitF,
                 new Label("Quantity:"), qtyF,
-                new Label("Par level:"), parF);
+                new Label("Minimum stock:"), parF);
+        root.setPadding(new Insets(16));
         Button saveBtn = new Button("Save");
         Button cancelBtn = new Button("Cancel");
-        HBox buttons = new HBox(8);
-        buttons.getChildren().addAll(saveBtn, cancelBtn);
-        root.getChildren().add(buttons);
+        root.getChildren().add(new HBox(8, saveBtn, cancelBtn));
 
         Stage stage = new Stage();
         stage.setTitle("Edit inventory");
@@ -380,13 +390,14 @@ public class ManagerView extends BorderPane {
         final boolean[] saved = { false };
         saveBtn.setOnAction(ev -> {
             try {
+                item.setUnit(unitF.getText().trim());
                 item.setCurrentQuantity(Integer.parseInt(qtyF.getText().trim()));
                 item.setParLevel(Integer.parseInt(parF.getText().trim()));
                 controller.updateInventoryItem(item);
                 saved[0] = true;
                 stage.close();
             } catch (NumberFormatException ex) {
-                new Alert(Alert.AlertType.ERROR, "Invalid input. Use numbers for quantity and par.").showAndWait();
+                new Alert(Alert.AlertType.ERROR, "Invalid input. Use numbers for quantity and minimum.").showAndWait();
             }
         });
         cancelBtn.setOnAction(ev -> stage.close());
@@ -400,8 +411,7 @@ public class ManagerView extends BorderPane {
 
         Label title = new Label("Employees — View, Add & Edit");
         title.setFont(Font.font("Arial", FontWeight.BOLD, 16));
-        employeesPane.getChildren().add(title);
-        employeesPane.getChildren().add(new Separator());
+        employeesPane.getChildren().addAll(title, new Separator());
 
         TableView<Employee> table = new TableView<>();
         TableColumn<Employee, Integer> idCol = new TableColumn<>("ID");
@@ -418,7 +428,6 @@ public class ManagerView extends BorderPane {
         employeesPane.getChildren().add(table);
 
         HBox tableActions = new HBox(8);
-        tableActions.setAlignment(Pos.CENTER_LEFT);
         Button editEmpBtn = new Button("Edit selected");
         editEmpBtn.setOnAction(e -> {
             Employee sel = table.getSelectionModel().getSelectedItem();
@@ -455,55 +464,36 @@ public class ManagerView extends BorderPane {
 
         Label addLabel = new Label("Add new employee");
         addLabel.setFont(Font.font("Arial", FontWeight.BOLD, 12));
-        employeesPane.getChildren().add(addLabel);
         HBox form = new HBox(8);
-        form.setAlignment(Pos.CENTER_LEFT);
         TextField nameF = new TextField();
         nameF.setPromptText("Name");
-        nameF.setPrefWidth(140);
         TextField roleF = new TextField();
         roleF.setPromptText("Role");
-        roleF.setPrefWidth(100);
         Button addBtn = new Button("Add");
         addBtn.setOnAction(e -> {
-            int nextId = controller.getAllEmployees().stream()
-                    .mapToInt(Employee::getEmployeeId)
-                    .max()
-                    .orElse(0) + 1;
-            Employee emp = new Employee(nextId,
-                    nameF.getText().trim(),
-                    roleF.getText().trim(),
-                    true);
-            controller.addEmployee(emp);
+            int nextId = controller.getAllEmployees().stream().mapToInt(Employee::getEmployeeId).max().orElse(0) + 1;
+            controller.addEmployee(new Employee(nextId, nameF.getText().trim(), roleF.getText().trim(), true));
             table.setItems(javafx.collections.FXCollections.observableList(controller.getAllEmployees()));
             nameF.clear();
             roleF.clear();
         });
-        form.getChildren().addAll(
-                new Label("Name:"), nameF,
-                new Label("Role:"), roleF,
-                addBtn);
-        employeesPane.getChildren().add(form);
+        form.getChildren().addAll(new Label("Name:"), nameF, new Label("Role:"), roleF, addBtn);
+        employeesPane.getChildren().addAll(addLabel, form);
     }
 
     private boolean showEditEmployeeDialog(Employee emp) {
         TextField nameF = new TextField(emp.getName());
-        nameF.setPrefWidth(200);
         TextField roleF = new TextField(emp.getRole() != null ? emp.getRole() : "");
-        roleF.setPrefWidth(120);
         CheckBox activeCheck = new CheckBox("Active");
         activeCheck.setSelected(emp.isActive());
-        VBox root = new VBox(10);
-        root.setPadding(new Insets(16));
-        root.getChildren().addAll(
+        VBox root = new VBox(10,
                 new Label("Name:"), nameF,
                 new Label("Role:"), roleF,
                 activeCheck);
+        root.setPadding(new Insets(16));
         Button saveBtn = new Button("Save");
         Button cancelBtn = new Button("Cancel");
-        HBox buttons = new HBox(8);
-        buttons.getChildren().addAll(saveBtn, cancelBtn);
-        root.getChildren().add(buttons);
+        root.getChildren().add(new HBox(8, saveBtn, cancelBtn));
 
         Stage stage = new Stage();
         stage.setTitle("Edit employee");
@@ -527,41 +517,42 @@ public class ManagerView extends BorderPane {
         reportsPane.setSpacing(12);
         reportsPane.setPadding(new Insets(16));
 
-        Label title = new Label("Reports — View & Create Day-to-Day Reports");
+        Label title = new Label("Reports — Product Usage, X/Z, Sales, and Restock");
         title.setFont(Font.font("Arial", FontWeight.BOLD, 16));
-        reportsPane.getChildren().add(title);
-        reportsPane.getChildren().add(new Separator());
 
-        DatePicker datePicker = new DatePicker(LocalDate.now());
-        Button refreshBtn = new Button("Refresh report");
-        Label orderCountLabel = new Label("Orders: —");
-        Label totalSalesLabel = new Label("Total sales: $—");
+        DatePicker startPicker = new DatePicker(LocalDate.now().minusDays(7));
+        DatePicker endPicker = new DatePicker(LocalDate.now());
+        TextArea output = new TextArea();
+        output.setEditable(false);
+        output.setPrefRowCount(24);
+        VBox.setVgrow(output, Priority.ALWAYS);
 
-        VBox reportBox = new VBox(8);
-        reportBox.getChildren().addAll(orderCountLabel, totalSalesLabel);
-        VBox.setVgrow(reportBox, Priority.NEVER);
+        Button productUsageBtn = new Button("Product Usage Chart");
+        productUsageBtn.setOnAction(e -> output.setText(controller.getInventoryUsageChart(startPicker.getValue(), endPicker.getValue())));
 
-        Runnable refresh = () -> {
-            LocalDate d = datePicker.getValue();
-            if (d == null) {
-                return;
-            }
-            long count = controller.getOrderCountForDate(d);
-            BigDecimal total = controller.getTotalSalesForDate(d);
-            orderCountLabel.setText("Orders: " + count);
-            totalSalesLabel.setText(
-                    "Total sales: $" + (total != null ? total.setScale(2, java.math.RoundingMode.HALF_UP) : "0.00"));
-        };
+        Button xReportBtn = new Button("X-Report (today)");
+        xReportBtn.setOnAction(e -> output.setText(controller.getXReport(LocalDate.now())));
 
-        refreshBtn.setOnAction(e -> refresh.run());
-        datePicker.valueProperty().addListener((o, a, b) -> refresh.run());
+        Button zReportBtn = new Button("Run Z-Report (today)");
+        zReportBtn.setOnAction(e -> output.setText(controller.runZReport(LocalDate.now())));
 
-        HBox top = new HBox(12);
+        Button salesReportBtn = new Button("Sales Report");
+        salesReportBtn.setOnAction(e -> output.setText(controller.getSalesReport(startPicker.getValue(), endPicker.getValue())));
+
+        Button restockBtn = new Button("Restock Report");
+        restockBtn.setOnAction(e -> output.setText(controller.getRestockReport()));
+
+        HBox top = new HBox(10,
+                new Label("Start:"), startPicker,
+                new Label("End:"), endPicker,
+                productUsageBtn,
+                salesReportBtn,
+                xReportBtn,
+                zReportBtn,
+                restockBtn);
         top.setAlignment(Pos.CENTER_LEFT);
-        top.getChildren().addAll(new Label("Date:"), datePicker, refreshBtn);
-        reportsPane.getChildren().add(top);
-        reportsPane.getChildren().add(reportBox);
-        refresh.run();
+
+        reportsPane.getChildren().addAll(title, new Separator(), top, output);
+        output.setText(controller.getXReport(LocalDate.now()));
     }
 }
-
