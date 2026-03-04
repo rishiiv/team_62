@@ -14,6 +14,7 @@ out/
 # OS files
 .DS_Store
 Thumbs.db
+*.sh
 
 # JavaFX runtime (if included)
 javafx-sdk/
