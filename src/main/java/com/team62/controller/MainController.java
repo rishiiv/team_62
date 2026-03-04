@@ -524,8 +524,8 @@ public class MainController {
                ps.setObject(1, orderId);
                ps.setObject(2, employeeId);
                ps.setObject(3, customerId);
-               ps.setObject(4, order.calculateTotal());
-               ps.executeUpdate();
+               ps.setObject(4, order.getTotalAmount()); // removed calculatetotal because
+               ps.executeUpdate();                      // it didn't calculate tax, but this does
            }
           
            try (var ps = conn.prepareStatement(insertOrderItemSql)) {
