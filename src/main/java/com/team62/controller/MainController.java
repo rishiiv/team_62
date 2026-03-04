@@ -70,7 +70,6 @@ public class MainController {
   
    /**
    * @param item the menu item to add; must have name, category, and basePrice set; isActive can be set to false to hide from menu without deleting
-   * @return void; on failure, the error is printed and no exception is thrown to
    * the caller (e.g. if name/category/price is null, or if a database error occurs during query execution)
    */
    public void addMenuItem(MenuItem item) {
@@ -103,7 +102,6 @@ public class MainController {
   
    /**
    * @param item the menu item to update; must have dbId set to attempt update
-   * @return void; on failure, the error is printed and no exception is thrown to
    * the caller (e.g. if dbId is null, or if a database error occurs during query execution)
    */
    public void updateMenuItem(MenuItem item) {
@@ -197,7 +195,6 @@ public class MainController {
   
    /**
    * @param item the inventory item to add; must have name and currentQuantity set, and the name must match an existing Item in the database
-   * @return void; on failure, the error is printed and no exception is thrown to
    * the caller (e.g. if name is null, or if no matching Item is found, or if a database error occurs during query execution)
    */
    public void addInventoryItem(InventoryItem item) {
@@ -254,7 +251,6 @@ public class MainController {
   
    /**
    * @param item the inventory item to update; must have dbId set to attempt update
-   * @return void; on failure, the error is printed and no exception is thrown to
    * the caller (e.g. if dbId is null, or if a database error occurs during query execution)
    */
    public void updateInventoryItem(InventoryItem item) {
@@ -339,7 +335,6 @@ public class MainController {
   
    /**
    * @param employee the employee to add; must have name and role set (role can be empty string for no role)
-   * @return void; on failure, the error is printed and no exception is thrown to
    * the caller (e.g. if name is null, or if a database error occurs during query execution)
    */
    public void addEmployee(Employee employee) {
@@ -365,7 +360,6 @@ public class MainController {
   
    /**
    * @param employee the employee to update; must have dbId set to attempt update
-   * @return void; on failure, the error is printed and no exception is thrown to the caller
    */
    public void updateEmployee(Employee employee) {
        if (employee.getDbId() == null) {
@@ -614,7 +608,6 @@ public class MainController {
        return id;
    }
 }
-
 
 
 
