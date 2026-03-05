@@ -637,13 +637,17 @@ public class MainController {
     }
 
     public String runZReport(LocalDate date) {
-        String checkSql = "SELECT report_date FROM pos_z_report WHERE report_date = ?";
+        String checkSql = "SELECT report_text FROM pos_z_report WHERE report_date = ?";
         try (var conn = Database.getConnection()) {
             try (var check = conn.prepareStatement(checkSql)) {
                 check.setObject(1, date);
                 try (var rs = check.executeQuery()) {
                     if (rs.next()) {
-                        return "Z REPORT\nBusiness date: " + date + "\n\nThis Z-report has already been generated for today.\n";
+                        String existing = rs.getString("report_text");
+                        if (existing == null || existing.isBlank()) {
+                            existing = "Z REPORT\nBusiness date: " + date + "\n\n(Existing report text was empty.)\n";
+                        }
+                        return existing + "\n\n(Already generated earlier today — Z can only be run once per business date.)\n";
                     }
                 }
             }
@@ -667,6 +671,146 @@ public class MainController {
             e.printStackTrace();
             return "Failed to run Z-report: " + e.getMessage();
         }
+    }
+
+    /**
+     * Non-destructive view helper: returns today's Z report if one exists.
+     * Does NOT generate or reset anything.
+     */
+    public String getZReport(LocalDate date) {
+        String sql = "SELECT report_text FROM pos_z_report WHERE report_date = ?";
+        try (var conn = Database.getConnection();
+                var ps = conn.prepareStatement(sql)) {
+            ps.setObject(1, date);
+            try (var rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    String txt = rs.getString("report_text");
+                    if (txt == null || txt.isBlank()) {
+                        return "Z REPORT\nBusiness date: " + date + "\n\n(Report exists but is empty.)\n";
+                    }
+                    return txt;
+                }
+            }
+            return "Z REPORT\nBusiness date: " + date + "\n\nNo Z-report has been generated for today yet.\n";
+        } catch (SQLException e) {
+            e.printStackTrace();
+            return "Failed to load Z-report: " + e.getMessage();
+        }
+    }
+
+    /**
+     * Testing/mistake recovery helper.
+     *
+     * POS Z-report close-out deletes the day's rows from pos_sales_activity, which drives X/Z reporting.
+     * For development/testing, this method deletes the Z-report record for the given date and rebuilds
+     * pos_sales_activity from historical orders for that date.
+     *
+     * NOTE: Payment method is not stored in the shared schema's Order tables, so rebuilt rows default
+     * to "Cash".
+     */
+    public String resetZReport(LocalDate date) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("RESET Z REPORT (TESTING)\n")
+                .append("Business date: ").append(date).append("\n\n");
+
+        String deleteZ = "DELETE FROM pos_z_report WHERE report_date = ?";
+        String deleteActivity = "DELETE FROM pos_sales_activity WHERE business_date = ?";
+
+        String ordersSql = """
+                SELECT order_id, date, total_price
+                  FROM \"Order\"
+                 WHERE date::date = ?
+                 ORDER BY date
+                """;
+        String orderAggSql = """
+                SELECT COALESCE(SUM(quantity * unit_price), 0) AS subtotal,
+                       COALESCE(SUM(quantity), 0) AS item_count
+                  FROM \"Order_Item\"
+                 WHERE order_id = ?
+                """;
+
+        int rebuilt = 0;
+        try (var conn = Database.getConnection()) {
+            conn.setAutoCommit(false);
+
+            try (var ps = conn.prepareStatement(deleteZ)) {
+                ps.setObject(1, date);
+                int deleted = ps.executeUpdate();
+                sb.append(deleted > 0
+                        ? "Deleted existing Z-report record for the date.\n"
+                        : "No Z-report record existed for the date (nothing to delete).\n");
+            }
+
+            try (var ps = conn.prepareStatement(deleteActivity)) {
+                ps.setObject(1, date);
+                ps.executeUpdate();
+            }
+
+            try (var ordersPs = conn.prepareStatement(ordersSql);
+                    var aggPs = conn.prepareStatement(orderAggSql);
+                    var insertPs = conn.prepareStatement("""
+                            INSERT INTO pos_sales_activity
+                            (activity_id, business_date, event_time, activity_type, order_id, amount, tax_amount, payment_method, item_count)
+                            VALUES (?, ?, ?, 'SALE', ?, ?, ?, ?, ?)
+                            """)) {
+
+                ordersPs.setObject(1, date);
+                try (var rs = ordersPs.executeQuery()) {
+                    while (rs.next()) {
+                        Object orderIdObj = rs.getObject("order_id");
+                        if (orderIdObj == null) {
+                            continue;
+                        }
+
+                        java.util.UUID orderId = (java.util.UUID) orderIdObj;
+                        java.sql.Timestamp ts = rs.getTimestamp("date");
+                        if (ts == null) {
+                            ts = Timestamp.valueOf(date.atStartOfDay());
+                        }
+                        BigDecimal total = rs.getBigDecimal("total_price");
+                        if (total == null) {
+                            total = BigDecimal.ZERO;
+                        }
+
+                        aggPs.setObject(1, orderId);
+                        BigDecimal subtotal = BigDecimal.ZERO;
+                        int itemCount = 0;
+                        try (var aggRs = aggPs.executeQuery()) {
+                            if (aggRs.next()) {
+                                subtotal = aggRs.getBigDecimal("subtotal");
+                                if (subtotal == null) subtotal = BigDecimal.ZERO;
+                                itemCount = aggRs.getInt("item_count");
+                            }
+                        }
+                        BigDecimal tax = total.subtract(subtotal).max(BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP);
+
+                        insertPs.setObject(1, java.util.UUID.randomUUID());
+                        insertPs.setObject(2, date);
+                        insertPs.setTimestamp(3, ts);
+                        insertPs.setObject(4, orderId);
+                        insertPs.setBigDecimal(5, total.setScale(2, RoundingMode.HALF_UP));
+                        insertPs.setBigDecimal(6, tax);
+                        insertPs.setString(7, "Cash");
+                        insertPs.setInt(8, itemCount);
+                        insertPs.addBatch();
+                        rebuilt++;
+                    }
+                }
+
+                insertPs.executeBatch();
+            }
+
+            conn.commit();
+
+            sb.append("\nRebuilt ").append(rebuilt).append(" sale activity rows from orders for ").append(date).append(".\n")
+                    .append("You should now be able to view the X-report and run the Z-report again for this date.\n")
+                    .append("(Rebuilt payment method defaults to 'Cash' due to schema limitations.)\n");
+        } catch (SQLException e) {
+            e.printStackTrace();
+            sb.append("Failed to reset Z-report: ").append(e.getMessage());
+        }
+
+        return sb.toString();
     }
 
     private String buildZReportText(java.sql.Connection conn, LocalDate date) throws SQLException {
