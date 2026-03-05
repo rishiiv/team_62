@@ -242,7 +242,8 @@ public class MainController {
     public List<InventoryItem> getAllInventoryItems() {
         List<InventoryItem> items = new ArrayList<>();
         String sql = """
-                SELECT iq.inventory_id,
+                SELECT DISTINCT ON (iq.inventory_id)
+                       iq.inventory_id,
                        COALESCE(meta.display_name, i.name, 'Inventory Item') AS name,
                        COALESCE(meta.unit, '') AS unit,
                        iq.quantity,
@@ -251,7 +252,7 @@ public class MainController {
              LEFT JOIN pos_inventory_meta meta ON meta.inventory_id = iq.inventory_id
              LEFT JOIN "Item_Inventory" ii ON ii.inventory_id = iq.inventory_id
              LEFT JOIN "Item" i ON i.item_id = ii.item_id
-                 ORDER BY name
+                 ORDER BY iq.inventory_id, name
                 """;
         try (var conn = Database.getConnection();
                 var ps = conn.prepareStatement(sql);
