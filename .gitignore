@@ -1,3 +1,26 @@
-*.png
+# Compiled class files
 *.class
-*.pyc
+build/
+out/
+
+# IDE files
+.idea/
+*.iml
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+*.sh
+
+# JavaFX runtime (if included)
+javafx-sdk/
+
+# Avoid committing JDBC driver
+lib/*.jar
+
+# properties folder with login info
+db.properties
