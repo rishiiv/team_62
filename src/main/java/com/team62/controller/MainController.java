@@ -13,6 +13,9 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.sql.Connection;          
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 
 /**
  * Controller class - handles business logic and coordinates between Model and View.
@@ -776,12 +779,56 @@ public class MainController {
         return sb.toString();
     }
 
+    private boolean isStockAvailable(SalesOrder order, Connection conn) throws SQLException {
+        // Note: Changed pos_menu_inventory to "Item_Inventory"
+        String sql = """
+            SELECT iq.quantity
+            FROM "Inventory_Quantity" iq
+            JOIN "Item_Inventory" ii ON iq.inventory_id = ii.inventory_id
+            WHERE ii.item_id = ?
+        """;
+
+        for (var item : order.getOrderItems()) {
+            if (item.getItemDbId() == null) continue;
+            
+            boolean mappingFound = false;
+            try (var ps = conn.prepareStatement(sql)) {
+                ps.setObject(1, UUID.fromString(item.getItemDbId()));
+                
+                try (var rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        mappingFound = true;
+                        // Since your schema doesn't have a 'quantity_used' column yet,
+                        // we assume 1 unit is used per item ordered.
+                        if (rs.getInt("quantity") < item.getQuantity()) {
+                            return false; 
+                        }
+                    }
+                }
+            }
+            // If the item isn't even in the Item_Inventory table, block the sale
+            if (!mappingFound) return false;
+        }
+        return true;
+    }
+
     public String processOrder(SalesOrder order) {
         if (order == null || order.getOrderItems().isEmpty()) {
             return "Error: Invalid order";
         }
         if (order.getTotalAmount() == null || order.getTotalAmount().doubleValue() <= 0) {
             return "Error: Order total must be greater than zero";
+        }
+        //check stock availability before processing the order
+        try (var conn = Database.getConnection()) {
+            conn.setAutoCommit(false);
+            
+            if (!isStockAvailable(order, conn)) {
+                return "Error: Insufficient inventory for one or more items.";
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+            return "Error checking inventory: " + e.getMessage();
         }
 
         String insertOrderSql = """
@@ -860,38 +907,23 @@ public class MainController {
         }
     }
 
-    private void applyInventoryUsage(java.sql.Connection conn, UUID orderId, UUID menuItemId, int quantitySold)
-            throws SQLException {
-        try (var ps = conn.prepareStatement("""
-                SELECT inventory_id, quantity_used
-                  FROM pos_menu_inventory
-                 WHERE menu_item_id = ?
-                """)) {
+    private void applyInventoryUsage(Connection conn, UUID orderId, UUID menuItemId, int quantitySold) throws SQLException {
+        // 1. Get the ingredients for this item from your new Item_Inventory table
+        String sql = "SELECT inventory_id FROM \"Item_Inventory\" WHERE item_id = ?";
+        
+        try (var ps = conn.prepareStatement(sql)) {
             ps.setObject(1, menuItemId);
             try (var rs = ps.executeQuery()) {
                 while (rs.next()) {
-                    UUID inventoryId = (UUID) rs.getObject("inventory_id");
-                    int used = rs.getInt("quantity_used") * quantitySold;
-                    try (var update = conn.prepareStatement("""
-                            UPDATE "Inventory_Quantity"
-                               SET quantity = GREATEST(quantity - ?, 0)
-                             WHERE inventory_id = ?
-                            """)) {
-                        update.setInt(1, used);
-                        update.setObject(2, inventoryId);
-                        update.executeUpdate();
-                    }
-                    try (var insert = conn.prepareStatement("""
-                            INSERT INTO pos_inventory_usage
-                            (usage_id, usage_time, business_date, order_id, menu_item_id, inventory_id, quantity_used)
-                            VALUES (?, NOW(), CURRENT_DATE, ?, ?, ?, ?)
-                            """)) {
-                        insert.setObject(1, UUID.randomUUID());
-                        insert.setObject(2, orderId);
-                        insert.setObject(3, menuItemId);
-                        insert.setObject(4, inventoryId);
-                        insert.setInt(5, used);
-                        insert.executeUpdate();
+                    UUID invId = (UUID) rs.getObject("inventory_id");
+                    
+                    // 2. Update the quantity in "Inventory_Quantity"
+                    // Note: Assuming 1 unit used per item since your schema lacks quantity_used
+                    String update = "UPDATE \"Inventory_Quantity\" SET quantity = GREATEST(quantity - ?, 0) WHERE inventory_id = ?";
+                    try (var up = conn.prepareStatement(update)) {
+                        up.setInt(1, quantitySold);
+                        up.setObject(2, invId);
+                        up.executeUpdate();
                     }
                 }
             }
