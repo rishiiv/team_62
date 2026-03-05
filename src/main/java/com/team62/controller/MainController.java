@@ -240,11 +240,11 @@ public class MainController {
     // ============================
 
     public List<InventoryItem> getAllInventoryItems() {
-        List<InventoryItem> items = new ArrayList<>();
+        List<InventoryItem> items = new ArrayList<>(); // changed unit to i.category
         String sql = """
                 SELECT iq.inventory_id,
                        COALESCE(meta.display_name, i.name, 'Inventory Item') AS name,
-                       COALESCE(meta.unit, '') AS unit,
+                       COALESCE(i.category, '') AS unit,
                        iq.quantity,
                        COALESCE(meta.min_quantity, 0) AS min_quantity
                   FROM "Inventory_Quantity" iq

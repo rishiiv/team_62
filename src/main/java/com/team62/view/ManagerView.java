@@ -289,7 +289,8 @@ public class ManagerView extends BorderPane {
         idCol.setCellValueFactory(new PropertyValueFactory<>("inventoryItemId"));
         TableColumn<InventoryItem, String> nameCol = new TableColumn<>("Name");
         nameCol.setCellValueFactory(new PropertyValueFactory<>("name"));
-        TableColumn<InventoryItem, String> unitCol = new TableColumn<>("Unit");
+        // v unit -> category to reflect changes
+        TableColumn<InventoryItem, String> unitCol = new TableColumn<>("Category");
         unitCol.setCellValueFactory(new PropertyValueFactory<>("unit"));
         TableColumn<InventoryItem, Integer> qtyCol = new TableColumn<>("Quantity");
         qtyCol.setCellValueFactory(new PropertyValueFactory<>("currentQuantity"));
@@ -343,7 +344,7 @@ public class ManagerView extends BorderPane {
         TextField nameF = new TextField();
         nameF.setPromptText("Name");
         TextField unitF = new TextField();
-        unitF.setPromptText("Unit");
+        unitF.setPromptText("Category"); // Unit -> Category to reflect changes
         TextField qtyF = new TextField();
         qtyF.setPromptText("Qty");
         TextField parF = new TextField();
@@ -363,7 +364,8 @@ public class ManagerView extends BorderPane {
                 new Alert(Alert.AlertType.ERROR, "Invalid input. Use numbers for qty and minimum.").showAndWait();
             }
         });
-        form.getChildren().addAll(new Label("Name:"), nameF, new Label("Unit:"), unitF,
+        // v unit -> category to reflect changes
+        form.getChildren().addAll(new Label("Name:"), nameF, new Label("Category:"), unitF,
                 new Label("Qty:"), qtyF, new Label("Minimum:"), parF, addBtn);
         inventoryPane.getChildren().addAll(addLabel, form);
     }
