@@ -61,8 +61,9 @@ public class CashierView extends BorderPane {
             }
             Button btn = new Button(item.getName() + "\n$" + item.getBasePrice());
             btn.setPrefSize(120, 70);
-            btn.setWrapText(true);
-            btn.setAlignment(Pos.CENTER);
+            btn.setWrapText(true); 
+            // The following 2 lines are for button text alignment
+            btn.setAlignment(Pos.CENTER); 
             btn.setTextAlignment(javafx.scene.text.TextAlignment.CENTER);
             btn.setStyle(
                     "-fx-background-color: white; -fx-border-color: #ccc; -fx-border-radius: 4; -fx-background-radius: 4;");
