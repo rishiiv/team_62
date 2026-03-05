@@ -785,9 +785,9 @@ public class MainController {
         }
 
         String insertOrderSql = """
-                INSERT INTO "Order" (order_id, employee_id, customer_id, date, total_price)
-                VALUES (?, ?, ?, NOW(), ?)
-                """;
+                INSERT INTO "Order" (order_id, employee_id, customer_id, date, total_price, item_quantity, payment_method)
+                VALUES (?, ?, ?, NOW(), ?, ?, ?)
+                """;        // Added parameters item_quantity and payment_method
         String insertOrderItemSql = """
                 INSERT INTO "Order_Item" (id, order_id, item_id, quantity, unit_price)
                 VALUES (?, ?, ?, ?, ?)
@@ -812,6 +812,9 @@ public class MainController {
                 ps.setObject(2, employeeId);
                 ps.setObject(3, customerId);
                 ps.setBigDecimal(4, order.getTotalAmount());
+                ps.setInt(5, itemCount); // implementation of item_quantity addition
+                ps.setString(6, order.getPaymentMethod() == null ? "Cash" : order.getPaymentMethod());
+                                                 // ^ implementation of getting payment method
                 ps.executeUpdate();
             }
 
