@@ -3,6 +3,7 @@ package com.team62.view;
 import com.team62.controller.MainController;
 import com.team62.model.Employee;
 import com.team62.model.InventoryItem;
+import com.team62.model.InventoryUsage;
 import com.team62.model.MenuItem;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -530,16 +531,73 @@ public class ManagerView extends BorderPane {
         // Product Usage tab
         DatePicker usageStart = new DatePicker(LocalDate.now().minusDays(7));
         DatePicker usageEnd = new DatePicker(LocalDate.now());
-        TextArea usageOut = new TextArea();
-        usageOut.setEditable(false);
-        VBox.setVgrow(usageOut, Priority.ALWAYS);
+
+        TableView<InventoryUsage> usageTable = new TableView<>();
+        usageTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+
+        TableColumn<InventoryUsage, String> usageItemCol = new TableColumn<>("Inventory Item");
+        usageItemCol.setCellValueFactory(c -> new javafx.beans.property.SimpleStringProperty(c.getValue().getItemName()));
+
+        TableColumn<InventoryUsage, Number> usageAmtCol = new TableColumn<>("Amount Used");
+        usageAmtCol.setCellValueFactory(c -> new javafx.beans.property.SimpleIntegerProperty(c.getValue().getAmountUsed()));
+        usageAmtCol.setStyle("-fx-alignment: CENTER-RIGHT;");
+
+        // Bar column shows a horizontal bar (numeric value is already shown in the "Amount Used" column).
+        final javafx.beans.property.SimpleIntegerProperty maxUsed = new javafx.beans.property.SimpleIntegerProperty(1);
+        TableColumn<InventoryUsage, Number> usageBarCol = new TableColumn<>("Bar");
+        usageBarCol.setCellValueFactory(c -> new javafx.beans.property.SimpleIntegerProperty(c.getValue().getAmountUsed()));
+        usageBarCol.setCellFactory(col -> new javafx.scene.control.TableCell<>() {
+            private final javafx.scene.control.ProgressBar bar = new javafx.scene.control.ProgressBar(0);
+            private final javafx.scene.layout.HBox box = new javafx.scene.layout.HBox(8, bar);
+
+            {
+                box.setAlignment(Pos.CENTER_LEFT);
+                bar.setPrefWidth(260);
+                bar.setMaxWidth(Double.MAX_VALUE);
+            }
+
+            @Override
+            protected void updateItem(Number value, boolean empty) {
+                super.updateItem(value, empty);
+                if (empty || value == null) {
+                    setGraphic(null);
+                    setText(null);
+                    return;
+                }
+                int used = value.intValue();
+
+                int denom = Math.max(1, maxUsed.get());
+                double progress = Math.min(1.0, used / (double) denom);
+                bar.setProgress(progress);
+
+                setGraphic(box);
+                setText(null);
+            }
+        });
+
+        usageTable.getColumns().addAll(usageItemCol, usageAmtCol, usageBarCol);
+
+        VBox usageBox = new VBox(10);
+        VBox.setVgrow(usageTable, Priority.ALWAYS);
+
         Button usageBtn = new Button("Generate / Refresh");
-        usageBtn.setOnAction(e -> usageOut.setText(controller.getInventoryUsageChart(usageStart.getValue(), usageEnd.getValue())));
+        usageBtn.setOnAction(e -> {
+            var rows = controller.getInventoryUsageData(usageStart.getValue(), usageEnd.getValue());
+            int max = 1;
+            for (var r : rows) {
+                max = Math.max(max, r.getAmountUsed());
+            }
+            maxUsed.set(max);
+            usageTable.setItems(javafx.collections.FXCollections.observableArrayList(rows));
+        });
+
         HBox usageTop = new HBox(10, new Label("Start:"), usageStart, new Label("End:"), usageEnd, usageBtn);
         usageTop.setAlignment(Pos.CENTER_LEFT);
-        Tab usageTab = new Tab("Product Usage", new VBox(10, usageTop, usageOut));
 
-        // Sales Report tab
+        usageBox.getChildren().addAll(usageTop, usageTable);
+        Tab usageTab = new Tab("Product Usage", usageBox);
+
+// Sales Report tab
         DatePicker salesStart = new DatePicker(LocalDate.now().minusDays(7));
         DatePicker salesEnd = new DatePicker(LocalDate.now());
         TextArea salesOut = new TextArea();

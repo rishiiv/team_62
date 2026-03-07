@@ -1,56 +1,22 @@
 package com.team62.model;
 
-import java.sql.Date;
-
 /**
- * Model representing inventory usage
+ * Simple DTO for inventory usage reporting.
  */
 public class InventoryUsage {
-    private long usageId;
-    private int inventoryItemId;
-    private Date usageDate;
-    private int quantity;
-    
-    public InventoryUsage() {
+    private final String itemName;
+    private final int amountUsed;
+
+    public InventoryUsage(String itemName, int amountUsed) {
+        this.itemName = itemName;
+        this.amountUsed = amountUsed;
     }
-    
-    public InventoryUsage(long usageId, int inventoryItemId, Date usageDate, int quantity) {
-        this.usageId = usageId;
-        this.inventoryItemId = inventoryItemId;
-        this.usageDate = usageDate;
-        this.quantity = quantity;
+
+    public String getItemName() {
+        return itemName;
     }
-    
-    // Getters and Setters
-    public long getUsageId() {
-        return usageId;
-    }
-    
-    public void setUsageId(long usageId) {
-        this.usageId = usageId;
-    }
-    
-    public int getInventoryItemId() {
-        return inventoryItemId;
-    }
-    
-    public void setInventoryItemId(int inventoryItemId) {
-        this.inventoryItemId = inventoryItemId;
-    }
-    
-    public Date getUsageDate() {
-        return usageDate;
-    }
-    
-    public void setUsageDate(Date usageDate) {
-        this.usageDate = usageDate;
-    }
-    
-    public int getQuantity() {
-        return quantity;
-    }
-    
-    public void setQuantity(int quantity) {
-        this.quantity = quantity;
+
+    public int getAmountUsed() {
+        return amountUsed;
     }
 }

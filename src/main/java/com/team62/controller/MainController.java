@@ -539,6 +539,14 @@ public class MainController {
         return 0L;
     }
 
+    /**
+    * @param start inclusive, end inclusive
+    * @return A text-based bar chart of inventory usage for the given date range, ordered by quantity used.
+    * Each bar is scaled proportionally to the item with the highest usage in this period, with the numeric value shown at the left of the bar.
+    * If no usage is logged in this period, returns a message indicating so.
+    */
+    
+    // INVENTORY USAGE CHART
     public String getInventoryUsageChart(LocalDate start, LocalDate end) {
         String sql = """
                 SELECT COALESCE(meta.display_name, 'Inventory Item') AS item_name,
@@ -552,7 +560,9 @@ public class MainController {
         StringBuilder sb = new StringBuilder();
         sb.append("PRODUCT USAGE CHART\n")
                 .append(start).append(" to ").append(end).append("\n\n")
-                .append(String.format("%-24s %8s  %s\n", "Inventory Item", "Used", "Chart"));
+                // Keep the numeric value, but embed it into the bar column to avoid a redundant "Used" column.
+                // Layout: Inventory Item | Bar (with number shown at the left of the bar)
+                .append(String.format("%-24s  %s\n", "Inventory Item", "Bar"));
         try (var conn = Database.getConnection();
                 var ps = conn.prepareStatement(sql)) {
             ps.setObject(1, start);
@@ -562,7 +572,7 @@ public class MainController {
                 while (rs.next()) {
                     any = true;
                     int used = rs.getInt("used_total");
-                    sb.append(String.format("%-24s %8d  %s\n",
+                    sb.append(String.format("%-24s  %6d %s\n",
                             rs.getString("item_name"),
                             used,
                             bar(used)));
@@ -578,6 +588,51 @@ public class MainController {
         return sb.toString();
     }
 
+    /**
+     * Inventory usage data for table-based UI rendering.
+     *
+     * @param start inclusive
+     * @param end   inclusive
+     * @return list of InventoryUsage rows ordered by quantity used (desc), then name.
+     */
+    public java.util.List<com.team62.model.InventoryUsage> getInventoryUsageData(LocalDate start, LocalDate end) {
+        String sql = """
+                SELECT COALESCE(meta.display_name, 'Inventory Item') AS item_name,
+                       SUM(u.quantity_used) AS used_total
+                  FROM pos_inventory_usage u
+             LEFT JOIN pos_inventory_meta meta ON meta.inventory_id = u.inventory_id
+                 WHERE u.business_date BETWEEN ? AND ?
+              GROUP BY item_name
+              ORDER BY used_total DESC, item_name
+                """;
+
+        var out = new java.util.ArrayList<com.team62.model.InventoryUsage>();
+
+        if (start == null || end == null) {
+            return out;
+        }
+
+        try (var conn = Database.getConnection();
+             var ps = conn.prepareStatement(sql)) {
+            ps.setObject(1, start);
+            ps.setObject(2, end);
+            try (var rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    out.add(new com.team62.model.InventoryUsage(
+                            rs.getString("item_name"),
+                            rs.getInt("used_total")
+                    ));
+                }
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+
+        return out;
+    }
+
+
+    // X REPORT
     public String getXReport(LocalDate date) {
         StringBuilder sb = new StringBuilder();
         sb.append("X REPORT\n")
@@ -1056,25 +1111,80 @@ public class MainController {
     }
 
     private void applyInventoryUsage(Connection conn, UUID orderId, UUID menuItemId, int quantitySold) throws SQLException {
-        // 1. Get the ingredients for this item from your new Item_Inventory table
-        String sql = "SELECT inventory_id FROM \"Item_Inventory\" WHERE item_id = ?";
-        
-        try (var ps = conn.prepareStatement(sql)) {
+        // Prefer the POS recipe mapping because it includes quantity_used per sale.
+        // Fall back to the legacy Item_Inventory mapping with a default quantity of 1.
+        String recipeSql = """
+                SELECT inventory_id, quantity_used
+                  FROM pos_menu_inventory
+                 WHERE menu_item_id = ?
+                """;
+        String legacySql = """
+                SELECT inventory_id, 1 AS quantity_used
+                  FROM "Item_Inventory"
+                 WHERE item_id = ?
+                """;
+        String updateSql = """
+                UPDATE "Inventory_Quantity"
+                   SET quantity = GREATEST(quantity - ?, 0)
+                 WHERE inventory_id = ?
+                """;
+        String insertUsageSql = """
+                INSERT INTO pos_inventory_usage
+                    (usage_id, usage_time, business_date, order_id, menu_item_id, inventory_id, quantity_used)
+                VALUES (?, NOW(), CURRENT_DATE, ?, ?, ?, ?)
+                """;
+
+        boolean anyRecipeRows = false;
+
+        try (var ps = conn.prepareStatement(recipeSql)) {
             ps.setObject(1, menuItemId);
             try (var rs = ps.executeQuery()) {
                 while (rs.next()) {
-                    UUID invId = (UUID) rs.getObject("inventory_id");
-                    
-                    // 2. Update the quantity in "Inventory_Quantity"
-                    // Note: Assuming 1 unit used per item since your schema lacks quantity_used
-                    String update = "UPDATE \"Inventory_Quantity\" SET quantity = GREATEST(quantity - ?, 0) WHERE inventory_id = ?";
-                    try (var up = conn.prepareStatement(update)) {
-                        up.setInt(1, quantitySold);
-                        up.setObject(2, invId);
-                        up.executeUpdate();
-                    }
+                    anyRecipeRows = true;
+                    UUID inventoryId = (UUID) rs.getObject("inventory_id");
+                    int perSale = Math.max(1, rs.getInt("quantity_used"));
+                    int totalUsed = Math.max(1, quantitySold * perSale);
+                    decrementInventoryAndLogUsage(conn, updateSql, insertUsageSql, orderId, menuItemId, inventoryId, totalUsed);
                 }
             }
+        }
+
+        if (anyRecipeRows) {
+            return;
+        }
+
+        try (var ps = conn.prepareStatement(legacySql)) {
+            ps.setObject(1, menuItemId);
+            try (var rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    UUID inventoryId = (UUID) rs.getObject("inventory_id");
+                    int totalUsed = Math.max(1, quantitySold * rs.getInt("quantity_used"));
+                    decrementInventoryAndLogUsage(conn, updateSql, insertUsageSql, orderId, menuItemId, inventoryId, totalUsed);
+                }
+            }
+        }
+    }
+
+    private void decrementInventoryAndLogUsage(Connection conn,
+                                               String updateSql,
+                                               String insertUsageSql,
+                                               UUID orderId,
+                                               UUID menuItemId,
+                                               UUID inventoryId,
+                                               int totalUsed) throws SQLException {
+        try (var up = conn.prepareStatement(updateSql)) {
+            up.setInt(1, totalUsed);
+            up.setObject(2, inventoryId);
+            up.executeUpdate();
+        }
+
+        try (var ins = conn.prepareStatement(insertUsageSql)) {
+            ins.setObject(1, UUID.randomUUID());
+            ins.setObject(2, orderId);
+            ins.setObject(3, menuItemId);
+            ins.setObject(4, inventoryId);
+            ins.setInt(5, totalUsed);
+            ins.executeUpdate();
         }
     }
 
