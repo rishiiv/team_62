@@ -665,6 +665,7 @@ public class ManagerView extends BorderPane {
         // Restock tab
         TextArea restockOut = new TextArea();
         restockOut.setEditable(false);
+        restockOut.setFont(javafx.scene.text.Font.font("Courier New", 13));
         VBox.setVgrow(restockOut, Priority.ALWAYS);
         Button restockBtn = new Button("Generate / Refresh");
         restockBtn.setOnAction(e -> restockOut.setText(controller.getRestockReport()));

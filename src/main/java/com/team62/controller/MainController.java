@@ -956,7 +956,7 @@ public class MainController {
                 """;
         StringBuilder sb = new StringBuilder();
         sb.append("RESTOCK REPORT\n\n")
-                .append(String.format("%-24s %10s %10s %10s\n", "Item", "Current", "Minimum", "Unit"));
+                .append(String.format("%-24s %10s %10s %10s\n", "Item", "Current", "Minimum", "Category"));
         try (var conn = Database.getConnection();
                 var ps = conn.prepareStatement(sql);
                 var rs = ps.executeQuery()) {
