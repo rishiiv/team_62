@@ -3,6 +3,7 @@ package com.team62.view;
 import com.team62.controller.MainController;
 import com.team62.model.Employee;
 import com.team62.model.InventoryItem;
+import com.team62.model.InventoryUsage;
 import com.team62.model.MenuItem;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -15,6 +16,8 @@ import javafx.scene.control.CheckBox;
 import javafx.scene.control.DatePicker;
 import javafx.scene.control.Label;
 import javafx.scene.control.Separator;
+import javafx.scene.control.Tab;
+import javafx.scene.control.TabPane;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextArea;
@@ -522,39 +525,160 @@ public class ManagerView extends BorderPane {
         Label title = new Label("Reports — Product Usage, X/Z, Sales, and Restock");
         title.setFont(Font.font("Arial", FontWeight.BOLD, 16));
 
-        DatePicker startPicker = new DatePicker(LocalDate.now().minusDays(7));
-        DatePicker endPicker = new DatePicker(LocalDate.now());
-        TextArea output = new TextArea();
-        output.setEditable(false);
-        output.setPrefRowCount(24);
-        VBox.setVgrow(output, Priority.ALWAYS);
+        TabPane tabs = new TabPane();
+        tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
 
-        Button productUsageBtn = new Button("Product Usage Chart");
-        productUsageBtn.setOnAction(e -> output.setText(controller.getInventoryUsageChart(startPicker.getValue(), endPicker.getValue())));
+        // Product Usage tab
+        DatePicker usageStart = new DatePicker(LocalDate.now().minusDays(7));
+        DatePicker usageEnd = new DatePicker(LocalDate.now());
 
-        Button xReportBtn = new Button("X-Report (today)");
-        xReportBtn.setOnAction(e -> output.setText(controller.getXReport(LocalDate.now())));
+        TableView<InventoryUsage> usageTable = new TableView<>();
+        usageTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
 
-        Button zReportBtn = new Button("Run Z-Report (today)");
-        zReportBtn.setOnAction(e -> output.setText(controller.runZReport(LocalDate.now())));
+        TableColumn<InventoryUsage, String> usageItemCol = new TableColumn<>("Inventory Item");
+        usageItemCol.setCellValueFactory(c -> new javafx.beans.property.SimpleStringProperty(c.getValue().getItemName()));
 
-        Button salesReportBtn = new Button("Sales Report");
-        salesReportBtn.setOnAction(e -> output.setText(controller.getSalesReport(startPicker.getValue(), endPicker.getValue())));
+        TableColumn<InventoryUsage, Number> usageAmtCol = new TableColumn<>("Amount Used");
+        usageAmtCol.setCellValueFactory(c -> new javafx.beans.property.SimpleIntegerProperty(c.getValue().getAmountUsed()));
+        usageAmtCol.setStyle("-fx-alignment: CENTER-RIGHT;");
 
-        Button restockBtn = new Button("Restock Report");
-        restockBtn.setOnAction(e -> output.setText(controller.getRestockReport()));
+        // Bar column shows a horizontal bar (numeric value is already shown in the "Amount Used" column).
+        final javafx.beans.property.SimpleIntegerProperty maxUsed = new javafx.beans.property.SimpleIntegerProperty(1);
+        TableColumn<InventoryUsage, Number> usageBarCol = new TableColumn<>("Bar");
+        usageBarCol.setCellValueFactory(c -> new javafx.beans.property.SimpleIntegerProperty(c.getValue().getAmountUsed()));
+        usageBarCol.setCellFactory(col -> new javafx.scene.control.TableCell<>() {
+            private final javafx.scene.control.ProgressBar bar = new javafx.scene.control.ProgressBar(0);
+            private final javafx.scene.layout.HBox box = new javafx.scene.layout.HBox(8, bar);
 
-        HBox top = new HBox(10,
-                new Label("Start:"), startPicker,
-                new Label("End:"), endPicker,
-                productUsageBtn,
-                salesReportBtn,
-                xReportBtn,
-                zReportBtn,
-                restockBtn);
-        top.setAlignment(Pos.CENTER_LEFT);
+            {
+                box.setAlignment(Pos.CENTER_LEFT);
+                bar.setPrefWidth(260);
+                bar.setMaxWidth(Double.MAX_VALUE);
+            }
 
-        reportsPane.getChildren().addAll(title, new Separator(), top, output);
-        output.setText(controller.getXReport(LocalDate.now()));
+            @Override
+            protected void updateItem(Number value, boolean empty) {
+                super.updateItem(value, empty);
+                if (empty || value == null) {
+                    setGraphic(null);
+                    setText(null);
+                    return;
+                }
+                int used = value.intValue();
+
+                int denom = Math.max(1, maxUsed.get());
+                double progress = Math.min(1.0, used / (double) denom);
+                bar.setProgress(progress);
+
+                setGraphic(box);
+                setText(null);
+            }
+        });
+
+        usageTable.getColumns().addAll(usageItemCol, usageAmtCol, usageBarCol);
+
+        VBox usageBox = new VBox(10);
+        VBox.setVgrow(usageTable, Priority.ALWAYS);
+
+        Button usageBtn = new Button("Generate / Refresh");
+        usageBtn.setOnAction(e -> {
+            var rows = controller.getInventoryUsageData(usageStart.getValue(), usageEnd.getValue());
+            int max = 1;
+            for (var r : rows) {
+                max = Math.max(max, r.getAmountUsed());
+            }
+            maxUsed.set(max);
+            usageTable.setItems(javafx.collections.FXCollections.observableArrayList(rows));
+        });
+
+        HBox usageTop = new HBox(10, new Label("Start:"), usageStart, new Label("End:"), usageEnd, usageBtn);
+        usageTop.setAlignment(Pos.CENTER_LEFT);
+
+        usageBox.getChildren().addAll(usageTop, usageTable);
+        Tab usageTab = new Tab("Product Usage", usageBox);
+
+// Sales Report tab
+        DatePicker salesStart = new DatePicker(LocalDate.now().minusDays(7));
+        DatePicker salesEnd = new DatePicker(LocalDate.now());
+        TextArea salesOut = new TextArea();
+        salesOut.setEditable(false);
+        VBox.setVgrow(salesOut, Priority.ALWAYS);
+        Button salesBtn = new Button("Generate / Refresh");
+        salesBtn.setOnAction(e -> salesOut.setText(controller.getSalesReport(salesStart.getValue(), salesEnd.getValue())));
+        HBox salesTop = new HBox(10, new Label("Start:"), salesStart, new Label("End:"), salesEnd, salesBtn);
+        salesTop.setAlignment(Pos.CENTER_LEFT);
+        Tab salesTab = new Tab("Sales Report", new VBox(10, salesTop, salesOut));
+
+        // X Report tab
+        TextArea xOut = new TextArea();
+        xOut.setEditable(false);
+        VBox.setVgrow(xOut, Priority.ALWAYS);
+        Button xBtn = new Button("Generate / Refresh (today)");
+        xBtn.setOnAction(e -> xOut.setText(controller.getXReport(LocalDate.now())));
+        HBox xTop = new HBox(10, xBtn);
+        xTop.setAlignment(Pos.CENTER_LEFT);
+        Tab xTab = new Tab("X Report", new VBox(10, xTop, xOut));
+
+        // Z Report tab (two buttons: generate + reset)
+        TextArea zOut = new TextArea();
+        zOut.setEditable(false);
+        VBox.setVgrow(zOut, Priority.ALWAYS);
+
+        Button genZBtn = new Button("Generate Z Report (today)");
+        genZBtn.setStyle("-fx-text-fill: #c00;");
+        genZBtn.setOnAction(e -> {
+            Alert confirm = new Alert(
+                    Alert.AlertType.CONFIRMATION,
+                    "Generate Z-Report for today?\n\n" +
+                            "This should only be run once per day at close. It will reset today's X-report counters.",
+                    ButtonType.OK, ButtonType.CANCEL);
+            confirm.setHeaderText("Confirm Z-Report");
+            if (confirm.showAndWait().orElse(ButtonType.CANCEL) == ButtonType.OK) {
+                zOut.setText(controller.runZReport(LocalDate.now()));
+            }
+        });
+
+        Button resetZBtn = new Button("Reset Z Report (testing)");
+        resetZBtn.setOnAction(e -> {
+            Alert confirm = new Alert(
+                    Alert.AlertType.CONFIRMATION,
+                    "Reset today's Z-Report?\n\n" +
+                            "This is meant for testing/mistakes. It will delete today's Z-report record and rebuild the X-report activity from orders.",
+                    ButtonType.OK, ButtonType.CANCEL);
+            confirm.setHeaderText("Confirm Z-Report Reset");
+            if (confirm.showAndWait().orElse(ButtonType.CANCEL) == ButtonType.OK) {
+                zOut.setText(controller.resetZReport(LocalDate.now()));
+            }
+        });
+
+        HBox zTop = new HBox(10, genZBtn, resetZBtn);
+        zTop.setAlignment(Pos.CENTER_LEFT);
+        Tab zTab = new Tab("Z Report", new VBox(10, zTop, zOut));
+
+        // When opening the Z tab, SHOW the existing report if present, but do NOT generate it.
+        zTab.setOnSelectionChanged(e -> {
+            if (zTab.isSelected()) {
+                zOut.setText(controller.getZReport(LocalDate.now()));
+            }
+        });
+
+        // Restock tab
+        TextArea restockOut = new TextArea();
+        restockOut.setEditable(false);
+        restockOut.setFont(javafx.scene.text.Font.font("Courier New", 13));
+        VBox.setVgrow(restockOut, Priority.ALWAYS);
+        Button restockBtn = new Button("Generate / Refresh");
+        restockBtn.setOnAction(e -> restockOut.setText(controller.getRestockReport()));
+        HBox restockTop = new HBox(10, restockBtn);
+        restockTop.setAlignment(Pos.CENTER_LEFT);
+        Tab restockTab = new Tab("Restock", new VBox(10, restockTop, restockOut));
+
+        tabs.getTabs().addAll(usageTab, salesTab, xTab, zTab, restockTab);
+        VBox.setVgrow(tabs, Priority.ALWAYS);
+        reportsPane.getChildren().addAll(title, new Separator(), tabs);
+
+        xOut.setText("Click 'Generate / Refresh (today)' to view the X report.");
+        zOut.setText("Open this tab to view today's Z report if it exists.\n" +
+                "Use the button to generate it at end-of-day (destructive).\n");
     }
 }

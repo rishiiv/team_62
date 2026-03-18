@@ -13,6 +13,9 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.sql.Connection;          
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 
 /**
  * Controller class - handles business logic and coordinates between Model and View.
@@ -242,16 +245,17 @@ public class MainController {
     public List<InventoryItem> getAllInventoryItems() {
         List<InventoryItem> items = new ArrayList<>(); // changed unit to i.category
         String sql = """
-                SELECT iq.inventory_id,
+                SELECT DISTINCT ON (iq.inventory_id)
+                       iq.inventory_id,
                        COALESCE(meta.display_name, i.name, 'Inventory Item') AS name,
-                       COALESCE(i.category, '') AS unit,
+                       COALESCE(meta.unit, i.category, '') AS unit,
                        iq.quantity,
                        COALESCE(meta.min_quantity, 0) AS min_quantity
                   FROM "Inventory_Quantity" iq
              LEFT JOIN pos_inventory_meta meta ON meta.inventory_id = iq.inventory_id
              LEFT JOIN "Item_Inventory" ii ON ii.inventory_id = iq.inventory_id
              LEFT JOIN "Item" i ON i.item_id = ii.item_id
-                 ORDER BY name
+                 ORDER BY iq.inventory_id, name
                 """;
         try (var conn = Database.getConnection();
                 var ps = conn.prepareStatement(sql);
@@ -535,6 +539,14 @@ public class MainController {
         return 0L;
     }
 
+    /**
+    * @param start inclusive, end inclusive
+    * @return A text-based bar chart of inventory usage for the given date range, ordered by quantity used.
+    * Each bar is scaled proportionally to the item with the highest usage in this period, with the numeric value shown at the left of the bar.
+    * If no usage is logged in this period, returns a message indicating so.
+    */
+    
+    // INVENTORY USAGE CHART
     public String getInventoryUsageChart(LocalDate start, LocalDate end) {
         String sql = """
                 SELECT COALESCE(meta.display_name, 'Inventory Item') AS item_name,
@@ -548,7 +560,9 @@ public class MainController {
         StringBuilder sb = new StringBuilder();
         sb.append("PRODUCT USAGE CHART\n")
                 .append(start).append(" to ").append(end).append("\n\n")
-                .append(String.format("%-24s %8s  %s\n", "Inventory Item", "Used", "Chart"));
+                // Keep the numeric value, but embed it into the bar column to avoid a redundant "Used" column.
+                // Layout: Inventory Item | Bar (with number shown at the left of the bar)
+                .append(String.format("%-24s  %s\n", "Inventory Item", "Bar"));
         try (var conn = Database.getConnection();
                 var ps = conn.prepareStatement(sql)) {
             ps.setObject(1, start);
@@ -558,7 +572,7 @@ public class MainController {
                 while (rs.next()) {
                     any = true;
                     int used = rs.getInt("used_total");
-                    sb.append(String.format("%-24s %8d  %s\n",
+                    sb.append(String.format("%-24s  %6d %s\n",
                             rs.getString("item_name"),
                             used,
                             bar(used)));
@@ -574,6 +588,51 @@ public class MainController {
         return sb.toString();
     }
 
+    /**
+     * Inventory usage data for table-based UI rendering.
+     *
+     * @param start inclusive
+     * @param end   inclusive
+     * @return list of InventoryUsage rows ordered by quantity used (desc), then name.
+     */
+    public java.util.List<com.team62.model.InventoryUsage> getInventoryUsageData(LocalDate start, LocalDate end) {
+        String sql = """
+                SELECT COALESCE(meta.display_name, 'Inventory Item') AS item_name,
+                       SUM(u.quantity_used) AS used_total
+                  FROM pos_inventory_usage u
+             LEFT JOIN pos_inventory_meta meta ON meta.inventory_id = u.inventory_id
+                 WHERE u.business_date BETWEEN ? AND ?
+              GROUP BY item_name
+              ORDER BY used_total DESC, item_name
+                """;
+
+        var out = new java.util.ArrayList<com.team62.model.InventoryUsage>();
+
+        if (start == null || end == null) {
+            return out;
+        }
+
+        try (var conn = Database.getConnection();
+             var ps = conn.prepareStatement(sql)) {
+            ps.setObject(1, start);
+            ps.setObject(2, end);
+            try (var rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    out.add(new com.team62.model.InventoryUsage(
+                            rs.getString("item_name"),
+                            rs.getInt("used_total")
+                    ));
+                }
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+
+        return out;
+    }
+
+
+    // X REPORT
     public String getXReport(LocalDate date) {
         StringBuilder sb = new StringBuilder();
         sb.append("X REPORT\n")
@@ -637,13 +696,17 @@ public class MainController {
     }
 
     public String runZReport(LocalDate date) {
-        String checkSql = "SELECT report_date FROM pos_z_report WHERE report_date = ?";
+        String checkSql = "SELECT report_text FROM pos_z_report WHERE report_date = ?";
         try (var conn = Database.getConnection()) {
             try (var check = conn.prepareStatement(checkSql)) {
                 check.setObject(1, date);
                 try (var rs = check.executeQuery()) {
                     if (rs.next()) {
-                        return "Z REPORT\nBusiness date: " + date + "\n\nThis Z-report has already been generated for today.\n";
+                        String existing = rs.getString("report_text");
+                        if (existing == null || existing.isBlank()) {
+                            existing = "Z REPORT\nBusiness date: " + date + "\n\n(Existing report text was empty.)\n";
+                        }
+                        return existing + "\n\n(Already generated earlier today — Z can only be run once per business date.)\n";
                     }
                 }
             }
@@ -667,6 +730,146 @@ public class MainController {
             e.printStackTrace();
             return "Failed to run Z-report: " + e.getMessage();
         }
+    }
+
+    /**
+     * Non-destructive view helper: returns today's Z report if one exists.
+     * Does NOT generate or reset anything.
+     */
+    public String getZReport(LocalDate date) {
+        String sql = "SELECT report_text FROM pos_z_report WHERE report_date = ?";
+        try (var conn = Database.getConnection();
+                var ps = conn.prepareStatement(sql)) {
+            ps.setObject(1, date);
+            try (var rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    String txt = rs.getString("report_text");
+                    if (txt == null || txt.isBlank()) {
+                        return "Z REPORT\nBusiness date: " + date + "\n\n(Report exists but is empty.)\n";
+                    }
+                    return txt;
+                }
+            }
+            return "Z REPORT\nBusiness date: " + date + "\n\nNo Z-report has been generated for today yet.\n";
+        } catch (SQLException e) {
+            e.printStackTrace();
+            return "Failed to load Z-report: " + e.getMessage();
+        }
+    }
+
+    /**
+     * Testing/mistake recovery helper.
+     *
+     * POS Z-report close-out deletes the day's rows from pos_sales_activity, which drives X/Z reporting.
+     * For development/testing, this method deletes the Z-report record for the given date and rebuilds
+     * pos_sales_activity from historical orders for that date.
+     *
+     * NOTE: Payment method is not stored in the shared schema's Order tables, so rebuilt rows default
+     * to "Cash".
+     */
+    public String resetZReport(LocalDate date) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("RESET Z REPORT (TESTING)\n")
+                .append("Business date: ").append(date).append("\n\n");
+
+        String deleteZ = "DELETE FROM pos_z_report WHERE report_date = ?";
+        String deleteActivity = "DELETE FROM pos_sales_activity WHERE business_date = ?";
+
+        String ordersSql = """
+                SELECT order_id, date, total_price
+                  FROM \"Order\"
+                 WHERE date::date = ?
+                 ORDER BY date
+                """;
+        String orderAggSql = """
+                SELECT COALESCE(SUM(quantity * unit_price), 0) AS subtotal,
+                       COALESCE(SUM(quantity), 0) AS item_count
+                  FROM \"Order_Item\"
+                 WHERE order_id = ?
+                """;
+
+        int rebuilt = 0;
+        try (var conn = Database.getConnection()) {
+            conn.setAutoCommit(false);
+
+            try (var ps = conn.prepareStatement(deleteZ)) {
+                ps.setObject(1, date);
+                int deleted = ps.executeUpdate();
+                sb.append(deleted > 0
+                        ? "Deleted existing Z-report record for the date.\n"
+                        : "No Z-report record existed for the date (nothing to delete).\n");
+            }
+
+            try (var ps = conn.prepareStatement(deleteActivity)) {
+                ps.setObject(1, date);
+                ps.executeUpdate();
+            }
+
+            try (var ordersPs = conn.prepareStatement(ordersSql);
+                    var aggPs = conn.prepareStatement(orderAggSql);
+                    var insertPs = conn.prepareStatement("""
+                            INSERT INTO pos_sales_activity
+                            (activity_id, business_date, event_time, activity_type, order_id, amount, tax_amount, payment_method, item_count)
+                            VALUES (?, ?, ?, 'SALE', ?, ?, ?, ?, ?)
+                            """)) {
+
+                ordersPs.setObject(1, date);
+                try (var rs = ordersPs.executeQuery()) {
+                    while (rs.next()) {
+                        Object orderIdObj = rs.getObject("order_id");
+                        if (orderIdObj == null) {
+                            continue;
+                        }
+
+                        java.util.UUID orderId = (java.util.UUID) orderIdObj;
+                        java.sql.Timestamp ts = rs.getTimestamp("date");
+                        if (ts == null) {
+                            ts = Timestamp.valueOf(date.atStartOfDay());
+                        }
+                        BigDecimal total = rs.getBigDecimal("total_price");
+                        if (total == null) {
+                            total = BigDecimal.ZERO;
+                        }
+
+                        aggPs.setObject(1, orderId);
+                        BigDecimal subtotal = BigDecimal.ZERO;
+                        int itemCount = 0;
+                        try (var aggRs = aggPs.executeQuery()) {
+                            if (aggRs.next()) {
+                                subtotal = aggRs.getBigDecimal("subtotal");
+                                if (subtotal == null) subtotal = BigDecimal.ZERO;
+                                itemCount = aggRs.getInt("item_count");
+                            }
+                        }
+                        BigDecimal tax = total.subtract(subtotal).max(BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP);
+
+                        insertPs.setObject(1, java.util.UUID.randomUUID());
+                        insertPs.setObject(2, date);
+                        insertPs.setTimestamp(3, ts);
+                        insertPs.setObject(4, orderId);
+                        insertPs.setBigDecimal(5, total.setScale(2, RoundingMode.HALF_UP));
+                        insertPs.setBigDecimal(6, tax);
+                        insertPs.setString(7, "Cash");
+                        insertPs.setInt(8, itemCount);
+                        insertPs.addBatch();
+                        rebuilt++;
+                    }
+                }
+
+                insertPs.executeBatch();
+            }
+
+            conn.commit();
+
+            sb.append("\nRebuilt ").append(rebuilt).append(" sale activity rows from orders for ").append(date).append(".\n")
+                    .append("You should now be able to view the X-report and run the Z-report again for this date.\n")
+                    .append("(Rebuilt payment method defaults to 'Cash' due to schema limitations.)\n");
+        } catch (SQLException e) {
+            e.printStackTrace();
+            sb.append("Failed to reset Z-report: ").append(e.getMessage());
+        }
+
+        return sb.toString();
     }
 
     private String buildZReportText(java.sql.Connection conn, LocalDate date) throws SQLException {
@@ -753,7 +956,7 @@ public class MainController {
                 """;
         StringBuilder sb = new StringBuilder();
         sb.append("RESTOCK REPORT\n\n")
-                .append(String.format("%-24s %10s %10s %10s\n", "Item", "Current", "Minimum", "Unit"));
+                .append(String.format("%-24s %10s %10s %10s\n", "Item", "Current", "Minimum", "Category"));
         try (var conn = Database.getConnection();
                 var ps = conn.prepareStatement(sql);
                 var rs = ps.executeQuery()) {
@@ -776,12 +979,56 @@ public class MainController {
         return sb.toString();
     }
 
+    private boolean isStockAvailable(SalesOrder order, Connection conn) throws SQLException {
+        // Note: Changed pos_menu_inventory to "Item_Inventory"
+        String sql = """
+            SELECT iq.quantity
+            FROM "Inventory_Quantity" iq
+            JOIN "Item_Inventory" ii ON iq.inventory_id = ii.inventory_id
+            WHERE ii.item_id = ?
+        """;
+
+        for (var item : order.getOrderItems()) {
+            if (item.getItemDbId() == null) continue;
+            
+            boolean mappingFound = false;
+            try (var ps = conn.prepareStatement(sql)) {
+                ps.setObject(1, UUID.fromString(item.getItemDbId()));
+                
+                try (var rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        mappingFound = true;
+                        // Since your schema doesn't have a 'quantity_used' column yet,
+                        // we assume 1 unit is used per item ordered.
+                        if (rs.getInt("quantity") < item.getQuantity()) {
+                            return false; 
+                        }
+                    }
+                }
+            }
+            // If the item isn't even in the Item_Inventory table, block the sale
+            if (!mappingFound) return false;
+        }
+        return true;
+    }
+
     public String processOrder(SalesOrder order) {
         if (order == null || order.getOrderItems().isEmpty()) {
             return "Error: Invalid order";
         }
         if (order.getTotalAmount() == null || order.getTotalAmount().doubleValue() <= 0) {
             return "Error: Order total must be greater than zero";
+        }
+        //check stock availability before processing the order
+        try (var conn = Database.getConnection()) {
+            conn.setAutoCommit(false);
+            
+            if (!isStockAvailable(order, conn)) {
+                return "Error: Insufficient inventory for one or more items.";
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+            return "Error checking inventory: " + e.getMessage();
         }
 
         String insertOrderSql = """
@@ -863,41 +1110,81 @@ public class MainController {
         }
     }
 
-    private void applyInventoryUsage(java.sql.Connection conn, UUID orderId, UUID menuItemId, int quantitySold)
-            throws SQLException {
-        try (var ps = conn.prepareStatement("""
+    private void applyInventoryUsage(Connection conn, UUID orderId, UUID menuItemId, int quantitySold) throws SQLException {
+        // Prefer the POS recipe mapping because it includes quantity_used per sale.
+        // Fall back to the legacy Item_Inventory mapping with a default quantity of 1.
+        String recipeSql = """
                 SELECT inventory_id, quantity_used
                   FROM pos_menu_inventory
                  WHERE menu_item_id = ?
-                """)) {
+                """;
+        String legacySql = """
+                SELECT inventory_id, 1 AS quantity_used
+                  FROM "Item_Inventory"
+                 WHERE item_id = ?
+                """;
+        String updateSql = """
+                UPDATE "Inventory_Quantity"
+                   SET quantity = GREATEST(quantity - ?, 0)
+                 WHERE inventory_id = ?
+                """;
+        String insertUsageSql = """
+                INSERT INTO pos_inventory_usage
+                    (usage_id, usage_time, business_date, order_id, menu_item_id, inventory_id, quantity_used)
+                VALUES (?, NOW(), CURRENT_DATE, ?, ?, ?, ?)
+                """;
+
+        boolean anyRecipeRows = false;
+
+        try (var ps = conn.prepareStatement(recipeSql)) {
+            ps.setObject(1, menuItemId);
+            try (var rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    anyRecipeRows = true;
+                    UUID inventoryId = (UUID) rs.getObject("inventory_id");
+                    int perSale = Math.max(1, rs.getInt("quantity_used"));
+                    int totalUsed = Math.max(1, quantitySold * perSale);
+                    decrementInventoryAndLogUsage(conn, updateSql, insertUsageSql, orderId, menuItemId, inventoryId, totalUsed);
+                }
+            }
+        }
+
+        if (anyRecipeRows) {
+            return;
+        }
+
+        try (var ps = conn.prepareStatement(legacySql)) {
             ps.setObject(1, menuItemId);
             try (var rs = ps.executeQuery()) {
                 while (rs.next()) {
                     UUID inventoryId = (UUID) rs.getObject("inventory_id");
-                    int used = rs.getInt("quantity_used") * quantitySold;
-                    try (var update = conn.prepareStatement("""
-                            UPDATE "Inventory_Quantity"
-                               SET quantity = GREATEST(quantity - ?, 0)
-                             WHERE inventory_id = ?
-                            """)) {
-                        update.setInt(1, used);
-                        update.setObject(2, inventoryId);
-                        update.executeUpdate();
-                    }
-                    try (var insert = conn.prepareStatement("""
-                            INSERT INTO pos_inventory_usage
-                            (usage_id, usage_time, business_date, order_id, menu_item_id, inventory_id, quantity_used)
-                            VALUES (?, NOW(), CURRENT_DATE, ?, ?, ?, ?)
-                            """)) {
-                        insert.setObject(1, UUID.randomUUID());
-                        insert.setObject(2, orderId);
-                        insert.setObject(3, menuItemId);
-                        insert.setObject(4, inventoryId);
-                        insert.setInt(5, used);
-                        insert.executeUpdate();
-                    }
+                    int totalUsed = Math.max(1, quantitySold * rs.getInt("quantity_used"));
+                    decrementInventoryAndLogUsage(conn, updateSql, insertUsageSql, orderId, menuItemId, inventoryId, totalUsed);
                 }
             }
+        }
+    }
+
+    private void decrementInventoryAndLogUsage(Connection conn,
+                                               String updateSql,
+                                               String insertUsageSql,
+                                               UUID orderId,
+                                               UUID menuItemId,
+                                               UUID inventoryId,
+                                               int totalUsed) throws SQLException {
+        try (var up = conn.prepareStatement(updateSql)) {
+            up.setInt(1, totalUsed);
+            up.setObject(2, inventoryId);
+            up.executeUpdate();
+        }
+
+        try (var ins = conn.prepareStatement(insertUsageSql)) {
+            ins.setObject(1, UUID.randomUUID());
+            ins.setObject(2, orderId);
+            ins.setObject(3, menuItemId);
+            ins.setObject(4, inventoryId);
+            ins.setInt(5, totalUsed);
+            ins.executeUpdate();
         }
     }
 
