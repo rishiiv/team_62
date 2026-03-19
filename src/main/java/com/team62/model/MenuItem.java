@@ -15,6 +15,7 @@ public class MenuItem {
     private String category;
     private BigDecimal basePrice;
     private boolean isActive;
+    private boolean outOfStock;
     
     public MenuItem() {
     }
@@ -79,5 +80,13 @@ public class MenuItem {
     @Override
     public String toString() {
         return name + " - $" + basePrice;
+    }
+
+    public boolean isOutOfStock() { 
+        return outOfStock; 
+    }
+    
+    public void setOutOfStock(boolean outOfStock) { 
+        this.outOfStock = outOfStock; 
     }
 }

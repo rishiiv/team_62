@@ -32,6 +32,7 @@ import javafx.scene.text.Font;
 import javafx.scene.text.FontWeight;
 import javafx.stage.Modality;
 import javafx.stage.Stage;
+import javafx.scene.control.TextInputDialog;
 
 /**
  * Manager view: sidebar navigation and content panes for Menu, Inventory,
@@ -45,6 +46,7 @@ public class ManagerView extends BorderPane {
     private final VBox inventoryPane = new VBox();
     private final VBox employeesPane = new VBox();
     private final VBox reportsPane = new VBox();
+    private Runnable refreshMenuTable;
 
     public ManagerView(MainController controller) {
         this.controller = controller;
@@ -125,7 +127,8 @@ public class ManagerView extends BorderPane {
         table.setPrefHeight(220);
         menuPane.getChildren().add(table);
 
-        Runnable refreshMenu = () -> table.setItems(javafx.collections.FXCollections.observableList(controller.getAllMenuItems()));
+        refreshMenuTable = () -> table.setItems(javafx.collections.FXCollections.observableList(controller.getAllMenuItems()));
+        Runnable refreshMenu = refreshMenuTable;
 
         HBox tableActions = new HBox(8);
         Button editMenuBtn = new Button("Edit selected");
@@ -161,33 +164,6 @@ public class ManagerView extends BorderPane {
         });
         tableActions.getChildren().addAll(editMenuBtn, deleteMenuBtn);
         menuPane.getChildren().add(tableActions);
-
-        Label addLabel = new Label("Add new standard item");
-        addLabel.setFont(Font.font("Arial", FontWeight.BOLD, 12));
-        HBox form = new HBox(8);
-        TextField nameF = new TextField();
-        nameF.setPromptText("Name");
-        TextField catF = new TextField();
-        catF.setPromptText("Category");
-        TextField priceF = new TextField();
-        priceF.setPromptText("Price");
-        Button addBtn = new Button("Add");
-        addBtn.setOnAction(e -> {
-            try {
-                int nextId = controller.getAllMenuItems().stream().mapToInt(MenuItem::getMenuItemId).max().orElse(0) + 1;
-                controller.addMenuItem(new MenuItem(nextId, nameF.getText().trim(), catF.getText().trim(),
-                        new BigDecimal(priceF.getText().trim()), true));
-                refreshMenu.run();
-                nameF.clear();
-                catF.clear();
-                priceF.clear();
-            } catch (Exception ex) {
-                new Alert(Alert.AlertType.ERROR, "Invalid input. Use a number for price.").showAndWait();
-            }
-        });
-        form.getChildren().addAll(new Label("Name:"), nameF, new Label("Category:"), catF,
-                new Label("Price:"), priceF, addBtn);
-        menuPane.getChildren().addAll(addLabel, form);
 
         Label seasonalLabel = new Label("Add new seasonal menu item + associated inventory items");
         seasonalLabel.setFont(Font.font("Arial", FontWeight.BOLD, 12));
@@ -299,7 +275,20 @@ public class ManagerView extends BorderPane {
         qtyCol.setCellValueFactory(new PropertyValueFactory<>("currentQuantity"));
         TableColumn<InventoryItem, Integer> parCol = new TableColumn<>("Minimum");
         parCol.setCellValueFactory(new PropertyValueFactory<>("parLevel"));
-        table.getColumns().addAll(idCol, nameCol, unitCol, qtyCol, parCol);
+        TableColumn<InventoryItem, Boolean> onMenuCol = new TableColumn<>("On Menu");
+        onMenuCol.setCellValueFactory(new PropertyValueFactory<>("onMenu"));
+        onMenuCol.setCellFactory(col -> new javafx.scene.control.TableCell<>() {
+            @Override
+            protected void updateItem(Boolean value, boolean empty) {
+                super.updateItem(value, empty);
+                if (empty || value == null || !value) {
+                    setText(null);
+                } else {
+                    setText("✓");
+                }
+            }
+        });
+        table.getColumns().addAll(idCol, nameCol, unitCol, qtyCol, parCol, onMenuCol);
         table.setItems(javafx.collections.FXCollections.observableList(controller.getAllInventoryItems()));
         table.setPrefHeight(240);
         inventoryPane.getChildren().add(table);
@@ -338,7 +327,63 @@ public class ManagerView extends BorderPane {
                 }
             }
         });
-        tableActions.getChildren().addAll(editInvBtn, deleteInvBtn);
+        Button addToMenuBtn = new Button("Add to menu");
+        addToMenuBtn.setOnAction(e -> {
+            InventoryItem sel = table.getSelectionModel().getSelectedItem();
+            if (sel == null) {
+                new Alert(Alert.AlertType.WARNING, "Select an inventory item to add to the menu.").showAndWait();
+                return;
+            }
+            if (sel.isOnMenu()) {
+                new Alert(Alert.AlertType.WARNING, sel.getName() + " is already on the menu.").showAndWait();
+                return;
+            }
+            TextInputDialog priceDialog = new TextInputDialog(
+                    sel.getBasePrice() != null ? sel.getBasePrice().toString() : "0.00");
+            priceDialog.setTitle("Set menu price");
+            priceDialog.setHeaderText("Adding \"" + sel.getName() + "\" to the menu");
+            priceDialog.setContentText("Price:");
+            priceDialog.showAndWait().ifPresent(input -> {
+                try {
+                    BigDecimal price = new BigDecimal(input.trim());
+                    String result = controller.addToMenu(sel, price);
+                    if (result.contains("success")) {
+                        refreshInventory.run();
+                        new Alert(Alert.AlertType.INFORMATION, sel.getName() + " added to menu.").showAndWait();
+                    } else {
+                        new Alert(Alert.AlertType.ERROR, result).showAndWait();
+                    }
+                } catch (NumberFormatException ex) {
+                    new Alert(Alert.AlertType.ERROR, "Invalid price.").showAndWait();
+                }
+            });
+        });
+
+        Button removeFromMenuBtn = new Button("Remove from menu");
+        removeFromMenuBtn.setOnAction(e -> {
+            InventoryItem sel = table.getSelectionModel().getSelectedItem();
+            if (sel == null) {
+                new Alert(Alert.AlertType.WARNING, "Select an inventory item to remove from the menu.").showAndWait();
+                return;
+            }
+            if (!sel.isOnMenu()) {
+                new Alert(Alert.AlertType.WARNING, sel.getName() + " is not currently on the menu.").showAndWait();
+                return;
+            }
+            Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
+                    "Remove \"" + sel.getName() + "\" from the menu?",
+                    ButtonType.OK, ButtonType.CANCEL);
+            if (confirm.showAndWait().orElse(ButtonType.CANCEL) == ButtonType.OK) {
+                String result = controller.removeFromMenu(sel);
+                if (result.contains("success")) {
+                    refreshInventory.run();
+                } else {
+                    new Alert(Alert.AlertType.ERROR, result).showAndWait();
+                }
+            }
+        });
+
+        tableActions.getChildren().addAll(editInvBtn, deleteInvBtn, addToMenuBtn, removeFromMenuBtn);
         inventoryPane.getChildren().add(tableActions);
 
         Label addLabel = new Label("Add new inventory item");

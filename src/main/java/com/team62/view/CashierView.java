@@ -56,18 +56,18 @@ public class CashierView extends BorderPane {
     public void refreshMenu() {
         menuGrid.getChildren().clear();
         for (MenuItem item : controller.getAllMenuItems()) {
-            if (!item.isActive()) {
-                continue;
-            }
             Button btn = new Button(item.getName() + "\n$" + item.getBasePrice());
             btn.setPrefSize(120, 70);
-            btn.setWrapText(true); 
-            // The following 2 lines are for button text alignment
-            btn.setAlignment(Pos.CENTER); 
+            btn.setWrapText(true);
+            btn.setAlignment(Pos.CENTER);
             btn.setTextAlignment(javafx.scene.text.TextAlignment.CENTER);
-            btn.setStyle(
-                    "-fx-background-color: white; -fx-border-color: #ccc; -fx-border-radius: 4; -fx-background-radius: 4;");
-            btn.setOnAction(e -> addToOrder(item));
+            if (!item.isActive()) {
+                btn.setStyle("-fx-background-color: #ddd; -fx-text-fill: #999; -fx-border-color: #ccc; -fx-border-radius: 4; -fx-background-radius: 4;");
+                btn.setDisable(true);
+            } else {
+                btn.setStyle("-fx-background-color: white; -fx-border-color: #ccc; -fx-border-radius: 4; -fx-background-radius: 4;");
+                btn.setOnAction(e -> addToOrder(item));
+            }
             menuGrid.getChildren().add(btn);
         }
     }

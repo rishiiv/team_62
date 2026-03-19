@@ -362,45 +362,67 @@ public class MainController {
             return e.getMessage() != null ? e.getMessage() : "Delete failed.";
         }
     }
-    
+
     public String addToMenu(InventoryItem item, BigDecimal price) {
         if (item.getDbId() == null) return "No database id.";
         try (var conn = Database.getConnection()) {
             conn.setAutoCommit(false);
 
-            UUID menuItemId = UUID.randomUUID();
+            // Check if an Item already exists for this inventory entry
+            UUID existingMenuItemId = null;
             try (var ps = conn.prepareStatement("""
-                    INSERT INTO "Item" (item_id, name, category, price, is_active, milk, ice, sugar, toppings)
-                    VALUES (?, ?, ?, ?, TRUE, 'whole', 1, 1.0, '{}'::text[])
+                    SELECT item_id FROM "Item_Inventory" WHERE inventory_id = ? LIMIT 1
                     """)) {
-                ps.setObject(1, menuItemId);
-                ps.setString(2, item.getName());
-                ps.setString(3, item.getUnit());
-                ps.setBigDecimal(4, price);
-                ps.executeUpdate();
+                ps.setObject(1, UUID.fromString(item.getDbId()));
+                try (var rs = ps.executeQuery()) {
+                    if (rs.next()) existingMenuItemId = (UUID) rs.getObject("item_id");
+                }
             }
 
-            try (var ps = conn.prepareStatement("""
-                    INSERT INTO "Item_Inventory" (id, inventory_id, item_id)
-                    VALUES (?, ?, ?)
-                    ON CONFLICT DO NOTHING
-                    """)) {
-                ps.setObject(1, UUID.randomUUID());
-                ps.setObject(2, UUID.fromString(item.getDbId()));
-                ps.setObject(3, menuItemId);
-                ps.executeUpdate();
+            if (existingMenuItemId != null) {
+                // Reactivate and update price
+                try (var ps = conn.prepareStatement("""
+                        UPDATE "Item" SET is_active = TRUE, price = ? WHERE item_id = ?
+                        """)) {
+                    ps.setBigDecimal(1, price);
+                    ps.setObject(2, existingMenuItemId);
+                    ps.executeUpdate();
+                }
+            } else {
+                // Create new Item record
+                UUID menuItemId = UUID.randomUUID();
+                try (var ps = conn.prepareStatement("""
+                        INSERT INTO "Item" (item_id, name, category, price, is_active, milk, ice, sugar, toppings)
+                        VALUES (?, ?, ?, ?, TRUE, 'whole', 1, 1.0, '{}'::text[])
+                        """)) {
+                    ps.setObject(1, menuItemId);
+                    ps.setString(2, item.getName());
+                    ps.setString(3, item.getUnit());
+                    ps.setBigDecimal(4, price);
+                    ps.executeUpdate();
+                }
+                try (var ps = conn.prepareStatement("""
+                        INSERT INTO "Item_Inventory" (id, inventory_id, item_id)
+                        VALUES (?, ?, ?)
+                        ON CONFLICT DO NOTHING
+                        """)) {
+                    ps.setObject(1, UUID.randomUUID());
+                    ps.setObject(2, UUID.fromString(item.getDbId()));
+                    ps.setObject(3, menuItemId);
+                    ps.executeUpdate();
+                }
+                try (var ps = conn.prepareStatement("""
+                        INSERT INTO pos_menu_inventory (menu_item_id, inventory_id, quantity_used)
+                        VALUES (?, ?, 1)
+                        ON CONFLICT DO NOTHING
+                        """)) {
+                    ps.setObject(1, menuItemId);
+                    ps.setObject(2, UUID.fromString(item.getDbId()));
+                    ps.executeUpdate();
+                }
             }
 
-            try (var ps = conn.prepareStatement("""
-                    INSERT INTO pos_menu_inventory (menu_item_id, inventory_id, quantity_used)
-                    VALUES (?, ?, 1)
-                    ON CONFLICT DO NOTHING
-                    """)) {
-                ps.setObject(1, menuItemId);
-                ps.setObject(2, UUID.fromString(item.getDbId()));
-                ps.executeUpdate();
-            }
-
+            // Flip is_on_menu and base_price
             try (var ps = conn.prepareStatement("""
                     UPDATE pos_inventory_meta
                     SET is_on_menu = TRUE, base_price = ?
@@ -1275,6 +1297,42 @@ public class MainController {
             up.setInt(1, totalUsed);
             up.setObject(2, inventoryId);
             up.executeUpdate();
+        }
+
+        // Auto-remove from menu if quantity hit minimum
+        try (var check = conn.prepareStatement("""
+                SELECT iq.quantity, COALESCE(meta.min_quantity, 0) AS min_qty
+                FROM "Inventory_Quantity" iq
+                JOIN pos_inventory_meta meta ON meta.inventory_id = iq.inventory_id
+                WHERE iq.inventory_id = ? AND meta.is_on_menu = TRUE
+                """)) {
+            check.setObject(1, inventoryId);
+            try (var rs = check.executeQuery()) {
+                if (rs.next() && rs.getInt("quantity") <= rs.getInt("min_qty")) {
+                    try (var findItem = conn.prepareStatement("""
+                            SELECT item_id FROM "Item_Inventory" WHERE inventory_id = ? LIMIT 1
+                            """)) {
+                        findItem.setObject(1, inventoryId);
+                        try (var itemRs = findItem.executeQuery()) {
+                            if (itemRs.next()) {
+                                UUID itemToDeactivate = (UUID) itemRs.getObject("item_id");
+                                try (var deactivate = conn.prepareStatement("""
+                                        UPDATE "Item" SET is_active = FALSE WHERE item_id = ?
+                                        """)) {
+                                    deactivate.setObject(1, itemToDeactivate);
+                                    deactivate.executeUpdate();
+                                }
+                            }
+                        }
+                    }
+                    try (var flip = conn.prepareStatement("""
+                            UPDATE pos_inventory_meta SET is_on_menu = FALSE WHERE inventory_id = ?
+                            """)) {
+                        flip.setObject(1, inventoryId);
+                        flip.executeUpdate();
+                    }
+                }
+            }
         }
 
         try (var ins = conn.prepareStatement(insertUsageSql)) {
