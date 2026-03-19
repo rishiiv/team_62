@@ -1,5 +1,7 @@
 package com.team62.model;
 
+import java.math.BigDecimal;
+
 /**
  * Model representing an inventory item for the manager UI.
  *
@@ -15,6 +17,8 @@ public class InventoryItem {
     private int parLevel;
     private int reorderPoint;
     private boolean isActive;
+    private boolean isOnMenu;
+    private BigDecimal basePrice;
     
     public InventoryItem() {
     }
@@ -98,4 +102,21 @@ public class InventoryItem {
     public String toString() {
         return name + " (" + unit + ")";
     }
+
+    public boolean isOnMenu() { 
+        return isOnMenu; 
+    }
+
+    public void setOnMenu(boolean onMenu) { 
+        isOnMenu = onMenu; 
+    }
+
+    public BigDecimal getBasePrice() { 
+        return basePrice; 
+    }
+
+    public void setBasePrice(BigDecimal basePrice) { 
+        this.basePrice = basePrice; 
+    }
+    
 }

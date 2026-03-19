@@ -245,18 +245,20 @@ public class MainController {
     public List<InventoryItem> getAllInventoryItems() {
         List<InventoryItem> items = new ArrayList<>(); // changed unit to i.category
         String sql = """
-                SELECT DISTINCT ON (iq.inventory_id)
-                       iq.inventory_id,
-                       COALESCE(meta.display_name, i.name, 'Inventory Item') AS name,
-                       COALESCE(meta.unit, i.category, '') AS unit,
-                       iq.quantity,
-                       COALESCE(meta.min_quantity, 0) AS min_quantity
-                  FROM "Inventory_Quantity" iq
-             LEFT JOIN pos_inventory_meta meta ON meta.inventory_id = iq.inventory_id
-             LEFT JOIN "Item_Inventory" ii ON ii.inventory_id = iq.inventory_id
-             LEFT JOIN "Item" i ON i.item_id = ii.item_id
-                 ORDER BY iq.inventory_id, name
-                """;
+            SELECT DISTINCT ON (iq.inventory_id)
+                iq.inventory_id,
+                COALESCE(meta.display_name, i.name, 'Inventory Item') AS name,
+                COALESCE(meta.unit, i.category, '') AS unit,
+                iq.quantity,
+                COALESCE(meta.min_quantity, 0) AS min_quantity,
+                COALESCE(meta.is_on_menu, FALSE) AS is_on_menu,
+                COALESCE(meta.base_price, 0) AS base_price
+            FROM "Inventory_Quantity" iq
+        LEFT JOIN pos_inventory_meta meta ON meta.inventory_id = iq.inventory_id
+        LEFT JOIN "Item_Inventory" ii ON ii.inventory_id = iq.inventory_id
+        LEFT JOIN "Item" i ON i.item_id = ii.item_id
+            ORDER BY iq.inventory_id, name
+            """;
         try (var conn = Database.getConnection();
                 var ps = conn.prepareStatement(sql);
                 var rs = ps.executeQuery()) {
@@ -273,6 +275,8 @@ public class MainController {
                 Object dbId = rs.getObject("inventory_id");
                 inv.setDbId(dbId != null ? dbId.toString() : null);
                 items.add(inv);
+                inv.setOnMenu(rs.getBoolean("is_on_menu"));
+                inv.setBasePrice(rs.getBigDecimal("base_price"));
             }
         } catch (SQLException e) {
             e.printStackTrace();
@@ -356,6 +360,101 @@ public class MainController {
         } catch (SQLException e) {
             e.printStackTrace();
             return e.getMessage() != null ? e.getMessage() : "Delete failed.";
+        }
+    }
+    
+    public String addToMenu(InventoryItem item, BigDecimal price) {
+        if (item.getDbId() == null) return "No database id.";
+        try (var conn = Database.getConnection()) {
+            conn.setAutoCommit(false);
+
+            UUID menuItemId = UUID.randomUUID();
+            try (var ps = conn.prepareStatement("""
+                    INSERT INTO "Item" (item_id, name, category, price, is_active, milk, ice, sugar, toppings)
+                    VALUES (?, ?, ?, ?, TRUE, 'whole', 1, 1.0, '{}'::text[])
+                    """)) {
+                ps.setObject(1, menuItemId);
+                ps.setString(2, item.getName());
+                ps.setString(3, item.getUnit());
+                ps.setBigDecimal(4, price);
+                ps.executeUpdate();
+            }
+
+            try (var ps = conn.prepareStatement("""
+                    INSERT INTO "Item_Inventory" (id, inventory_id, item_id)
+                    VALUES (?, ?, ?)
+                    ON CONFLICT DO NOTHING
+                    """)) {
+                ps.setObject(1, UUID.randomUUID());
+                ps.setObject(2, UUID.fromString(item.getDbId()));
+                ps.setObject(3, menuItemId);
+                ps.executeUpdate();
+            }
+
+            try (var ps = conn.prepareStatement("""
+                    INSERT INTO pos_menu_inventory (menu_item_id, inventory_id, quantity_used)
+                    VALUES (?, ?, 1)
+                    ON CONFLICT DO NOTHING
+                    """)) {
+                ps.setObject(1, menuItemId);
+                ps.setObject(2, UUID.fromString(item.getDbId()));
+                ps.executeUpdate();
+            }
+
+            try (var ps = conn.prepareStatement("""
+                    UPDATE pos_inventory_meta
+                    SET is_on_menu = TRUE, base_price = ?
+                    WHERE inventory_id = ?
+                    """)) {
+                ps.setBigDecimal(1, price);
+                ps.setObject(2, UUID.fromString(item.getDbId()));
+                ps.executeUpdate();
+            }
+
+            conn.commit();
+            return "success";
+        } catch (SQLException e) {
+            e.printStackTrace();
+            return "Failed to add to menu: " + e.getMessage();
+        }
+    }
+
+    public String removeFromMenu(InventoryItem item) {
+        if (item.getDbId() == null) return "No database id.";
+        try (var conn = Database.getConnection()) {
+            conn.setAutoCommit(false);
+
+            UUID menuItemId = null;
+            try (var ps = conn.prepareStatement("""
+                    SELECT item_id FROM "Item_Inventory" WHERE inventory_id = ? LIMIT 1
+                    """)) {
+                ps.setObject(1, UUID.fromString(item.getDbId()));
+                try (var rs = ps.executeQuery()) {
+                    if (rs.next()) menuItemId = (UUID) rs.getObject("item_id");
+                }
+            }
+
+            if (menuItemId != null) {
+                try (var ps = conn.prepareStatement("""
+                        UPDATE "Item" SET is_active = FALSE WHERE item_id = ?
+                        """)) {
+                    ps.setObject(1, menuItemId);
+                    ps.executeUpdate();
+                }
+            }
+
+            try (var ps = conn.prepareStatement("""
+                    UPDATE pos_inventory_meta SET is_on_menu = FALSE WHERE inventory_id = ?
+                    """)) {
+                ps.setObject(1, UUID.fromString(item.getDbId()));
+                ps.executeUpdate();
+            }
+
+            conn.commit();
+            return "success";
+        } catch (SQLException e) {
+            e.printStackTrace();
+            return "Failed to remove from menu: " + e.getMessage();
         }
     }
 
