@@ -61,7 +61,7 @@ public class CashierView extends BorderPane {
             btn.setWrapText(true);
             btn.setAlignment(Pos.CENTER);
             btn.setTextAlignment(javafx.scene.text.TextAlignment.CENTER);
-            if (!item.isActive()) {
+            if (item.isOutOfStock()) {
                 btn.setStyle("-fx-background-color: #ddd; -fx-text-fill: #999; -fx-border-color: #ccc; -fx-border-radius: 4; -fx-background-radius: 4;");
                 btn.setDisable(true);
             } else {

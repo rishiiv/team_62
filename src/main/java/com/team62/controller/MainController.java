@@ -98,10 +98,15 @@ public class MainController {
     public List<MenuItem> getAllMenuItems() {
         List<MenuItem> items = new ArrayList<>();
         String sql = """
-                SELECT item_id, name, category, price, is_active
-                  FROM "Item"
-                 ORDER BY name
-                """;
+            SELECT i.item_id, i.name, i.category, i.price, i.is_active,
+                CASE WHEN iq.quantity <= COALESCE(meta.min_quantity, 0) THEN TRUE ELSE FALSE END AS out_of_stock
+            FROM "Item" i
+        LEFT JOIN "Item_Inventory" ii ON ii.item_id = i.item_id
+        LEFT JOIN "Inventory_Quantity" iq ON iq.inventory_id = ii.inventory_id
+        LEFT JOIN pos_inventory_meta meta ON meta.inventory_id = ii.inventory_id
+            WHERE i.is_active = TRUE
+            ORDER BY i.name
+            """;
         try (var conn = Database.getConnection();
                 var ps = conn.prepareStatement(sql);
                 var rs = ps.executeQuery()) {
@@ -116,6 +121,7 @@ public class MainController {
                         rs.getBoolean("is_active"));
                 Object dbId = rs.getObject("item_id");
                 mi.setDbId(dbId != null ? dbId.toString() : null);
+                mi.setOutOfStock(rs.getBoolean("out_of_stock"));
                 items.add(mi);
             }
         } catch (SQLException e) {
